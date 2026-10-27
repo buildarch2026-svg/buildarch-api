@@ -1,0 +1,38 @@
+﻿# Environment variables and secrets
+**/.env
+**/.env.*
+!**/.env.example
+**/auth.json
+**/*service-account*.json
+**/firebase-adminsdk*.json
+
+# Private keys and certificates
+**/*.pem
+**/*.p12
+**/*.pfx
+**/*.jks
+**/id_rsa
+**/id_rsa.*
+**/*private*key*
+
+# Laravel dependencies and generated files
+**/vendor/
+**/storage/*.key
+**/storage/logs/*.log
+**/bootstrap/cache/*.php
+
+# Flutter generated files
+**/.dart_tool/
+**/build/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+
+# Node dependencies and generated assets
+**/node_modules/
+**/public/build/
+
+# Editor and operating system files
+**/.idea/
+**/.vscode/
+**/.DS_Store
+Thumbs.db
