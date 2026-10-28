@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Project;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
 class ProjectController extends Controller
@@ -65,6 +66,34 @@ class ProjectController extends Controller
         return response()->json([
             'project' => $this->projectResponse($project, $request),
         ], 201);
+    }
+
+    public function updatePhoto(Request $request, Project $project): JsonResponse
+    {
+        abort_unless($project->user_id === $request->user()->id, 403);
+
+        $validated = $request->validate([
+            'photo' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
+        ]);
+        $imagePath = $validated['photo']->store('projects', 'public');
+        if ($imagePath === false) {
+            return response()->json([
+                'message' => 'The project photo could not be saved. Please try again.',
+            ], 500);
+        }
+
+        $previousImagePath = $project->image_path;
+        $project->image_path = $imagePath;
+        $project->save();
+        $project->refresh();
+
+        if ($previousImagePath && $previousImagePath !== $imagePath) {
+            Storage::disk('public')->delete($previousImagePath);
+        }
+
+        return response()->json([
+            'project' => $this->projectResponse($project, $request),
+        ]);
     }
 
     private function projectResponse($project, Request $request): array

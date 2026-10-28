@@ -128,6 +128,72 @@ class ProjectsApiTest extends TestCase
             ->assertJsonPath('projects.0.photo_url', $response->json('project.photo_url'));
     }
 
+    public function test_project_owner_can_add_and_replace_a_project_photo(): void
+    {
+        Storage::fake('public');
+        $owner = User::factory()->create();
+        $project = $owner->projects()->create([
+            'name' => 'Garden House',
+            'location' => 'Kochi, Kerala',
+            'type' => 'new_construction',
+        ]);
+
+        $firstResponse = $this->actingAs($owner, 'sanctum')->post(
+            "/api/projects/{$project->id}/photo",
+            ['photo' => UploadedFile::fake()->image('first.jpg')],
+            ['Accept' => 'application/json'],
+        );
+        $firstResponse->assertOk()
+            ->assertJsonPath('project.is_owner', true);
+        $firstImagePath = $firstResponse->json('project.image_path');
+        Storage::disk('public')->assertExists($firstImagePath);
+
+        $secondResponse = $this->actingAs($owner, 'sanctum')->post(
+            "/api/projects/{$project->id}/photo",
+            ['photo' => UploadedFile::fake()->image('second.jpg')],
+            ['Accept' => 'application/json'],
+        );
+        $secondResponse->assertOk()
+            ->assertJsonPath('project.name', 'Garden House');
+        $secondImagePath = $secondResponse->json('project.image_path');
+
+        $this->assertNotSame($firstImagePath, $secondImagePath);
+        Storage::disk('public')->assertMissing($firstImagePath);
+        Storage::disk('public')->assertExists($secondImagePath);
+        $this->assertDatabaseHas('projects', [
+            'id' => $project->id,
+            'image_path' => $secondImagePath,
+        ]);
+    }
+
+    public function test_only_the_project_owner_can_update_the_project_photo(): void
+    {
+        Storage::fake('public');
+        $owner = User::factory()->create();
+        $member = User::factory()->create();
+        $project = $owner->projects()->create([
+            'name' => 'Garden House',
+            'location' => 'Kochi, Kerala',
+            'type' => 'new_construction',
+        ]);
+        ProjectMember::create([
+            'project_id' => $project->id,
+            'user_id' => $member->id,
+            'role' => 'contractor',
+        ]);
+
+        $this->actingAs($member, 'sanctum')->post(
+            "/api/projects/{$project->id}/photo",
+            ['photo' => UploadedFile::fake()->image('unauthorized.jpg')],
+            ['Accept' => 'application/json'],
+        )->assertForbidden();
+
+        $this->assertDatabaseHas('projects', [
+            'id' => $project->id,
+            'image_path' => null,
+        ]);
+    }
+
     public function test_joined_project_lists_the_member_role_and_inviter(): void
     {
         $owner = User::factory()->create(['name' => 'Project Owner']);

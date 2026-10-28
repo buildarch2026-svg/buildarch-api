@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\Auth\OtpController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\ProjectController;
 use App\Http\Controllers\Api\ProjectDocumentController;
+use App\Http\Controllers\Api\ProjectGroupChatController;
 use App\Http\Controllers\Api\ProjectInvitationController;
 use App\Http\Controllers\Api\ProjectMemberController;
 use App\Http\Controllers\Api\ProjectMessageController;
@@ -33,6 +34,32 @@ Route::middleware('auth:sanctum')->group(function () {
         ->middleware('throttle:60,1');
     Route::get('/projects', [ProjectController::class, 'index']);
     Route::post('/projects', [ProjectController::class, 'store']);
+    Route::post('/projects/{project}/photo', [ProjectController::class, 'updatePhoto'])
+        ->middleware('throttle:10,1');
+    Route::get('/projects/{project}/group-chat', [ProjectGroupChatController::class, 'index'])
+        ->middleware('throttle:60,1');
+    Route::get('/projects/{project}/group-chat/files', [ProjectGroupChatController::class, 'files'])
+        ->middleware('throttle:30,1');
+    Route::post(
+        '/projects/{project}/group-chat/messages',
+        [ProjectGroupChatController::class, 'storeText'],
+    )->middleware('throttle:30,1');
+    Route::post(
+        '/projects/{project}/group-chat/voice',
+        [ProjectGroupChatController::class, 'storeAttachment'],
+    )->middleware('throttle:10,1');
+    Route::get(
+        '/projects/{project}/group-chat/voice/{message}',
+        [ProjectGroupChatController::class, 'downloadAttachment'],
+    )->whereNumber('message')->middleware('throttle:30,1');
+    Route::post(
+        '/projects/{project}/group-chat/attachments',
+        [ProjectGroupChatController::class, 'storeAttachment'],
+    )->middleware('throttle:10,1');
+    Route::get(
+        '/projects/{project}/group-chat/attachments/{message}',
+        [ProjectGroupChatController::class, 'downloadAttachment'],
+    )->middleware('throttle:30,1');
     Route::get('/projects/{project}/invitations', [ProjectInvitationController::class, 'index'])
         ->middleware('throttle:30,1');
     Route::get('/projects/{project}/members', [ProjectMemberController::class, 'index'])

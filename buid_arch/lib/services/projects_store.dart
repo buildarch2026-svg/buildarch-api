@@ -92,6 +92,33 @@ class ProjectsStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<Project> updatePhoto({
+    required String projectId,
+    required XFile photo,
+  }) async {
+    final accountGeneration = _accountGeneration;
+    final token = await AuthSessionService.instance.readToken();
+    if (token == null || token.isEmpty) {
+      throw const AuthApiException(
+        'Your session expired. Please sign in again.',
+      );
+    }
+
+    final project = await AuthApiService.instance.uploadProjectPhoto(
+      token: token,
+      projectId: projectId,
+      photo: photo,
+    );
+    if (accountGeneration != _accountGeneration) return project;
+
+    final projectIndex = _projects.indexWhere((item) => item.id == projectId);
+    if (projectIndex != -1) {
+      _projects[projectIndex] = project;
+      notifyListeners();
+    }
+    return project;
+  }
+
   void clear() {
     _accountGeneration++;
     _projects = [];

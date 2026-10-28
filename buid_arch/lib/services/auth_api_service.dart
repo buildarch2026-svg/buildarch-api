@@ -282,6 +282,156 @@ class AuthApiService {
     }
   }
 
+  Future<List<ProjectMessage>> getProjectGroupMessages({
+    required String token,
+    required String projectId,
+    int afterId = 0,
+  }) async {
+    final response = await _get(
+      '/projects/$projectId/group-chat?after_id=$afterId',
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    final messages = response['messages'];
+    if (messages is! List) {
+      throw const AuthApiException('The group chat response was invalid.');
+    }
+    try {
+      return messages.map((message) {
+        if (message is Map) {
+          return ProjectMessage.fromJson(Map<String, dynamic>.from(message));
+        }
+        throw const FormatException(
+          'The group chat message response was invalid.',
+        );
+      }).toList();
+    } on FormatException catch (error) {
+      throw AuthApiException(error.message);
+    }
+  }
+
+  Future<List<ProjectMessage>> getProjectGroupFiles({
+    required String token,
+    required String projectId,
+  }) async {
+    final response = await _get(
+      '/projects/$projectId/group-chat/files',
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    final files = response['files'];
+    if (files is! List) {
+      throw const AuthApiException('The project files response was invalid.');
+    }
+    try {
+      return files.map((file) {
+        if (file is Map) {
+          return ProjectMessage.fromJson(Map<String, dynamic>.from(file));
+        }
+        throw const FormatException('The project file response was invalid.');
+      }).toList();
+    } on FormatException catch (error) {
+      throw AuthApiException(error.message);
+    }
+  }
+
+  Future<ProjectMessage> sendProjectGroupVoice({
+    required String token,
+    required String projectId,
+    required File file,
+  }) {
+    return sendProjectGroupAttachment(
+      token: token,
+      projectId: projectId,
+      file: XFile(file.path),
+      messageType: 'voice',
+    );
+  }
+
+  Future<ProjectMessage> sendProjectGroupAttachment({
+    required String token,
+    required String projectId,
+    required XFile file,
+    required String messageType,
+  }) async {
+    final size = await file.length();
+    final baseUrl = _baseUrl.endsWith('/') ? _baseUrl : '$_baseUrl/';
+    final uri = Uri.parse(baseUrl).resolve(
+      'projects/$projectId/group-chat/attachments',
+    );
+    final request = http.MultipartRequest('POST', uri)
+      ..headers.addAll({
+        'Accept': 'application/json',
+        'Authorization': 'Bearer $token',
+      })
+      ..fields['message_type'] = messageType
+      ..files.add(
+        http.MultipartFile(
+          'file',
+          file.openRead(),
+          size,
+          filename: file.name,
+        ),
+      );
+
+    try {
+      final streamedResponse =
+          await _client.send(request).timeout(_uploadTimeout);
+      final response = await http.Response.fromStream(streamedResponse)
+          .timeout(_uploadTimeout);
+      final message = _decodeResponse(response)['message'];
+      if (message is Map) {
+        try {
+          return ProjectMessage.fromJson(Map<String, dynamic>.from(message));
+        } on FormatException catch (error) {
+          throw AuthApiException(error.message);
+        }
+      }
+      throw const AuthApiException('The attachment response was invalid.');
+    } on SocketException {
+      throw const AuthApiException(
+        'Cannot reach the API. Check that Laravel is running and the API URL is correct.',
+      );
+    } on TimeoutException {
+      throw const AuthApiException('The upload timed out. Try again.');
+    } on http.ClientException {
+      throw const AuthApiException(
+        'Could not connect to the API. Check the device network and API URL.',
+      );
+    }
+  }
+
+  Future<ProjectMessage> sendProjectGroupText({
+    required String token,
+    required String projectId,
+    required String body,
+  }) async {
+    final response = await _post(
+      '/projects/$projectId/group-chat/messages',
+      {'body': body},
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    final message = response['message'];
+    if (message is! Map) {
+      throw const AuthApiException('The sent message response was invalid.');
+    }
+    try {
+      return ProjectMessage.fromJson(Map<String, dynamic>.from(message));
+    } on FormatException catch (error) {
+      throw AuthApiException(error.message);
+    }
+  }
+
+  Future<File> downloadProjectGroupVoice({
+    required String token,
+    required String projectId,
+    required int messageId,
+  }) {
+    final baseUrl = _baseUrl.endsWith('/') ? _baseUrl : '$_baseUrl/';
+    final uri = Uri.parse(baseUrl).resolve(
+      'projects/$projectId/group-chat/attachments/$messageId',
+    );
+    return _downloadToTemporaryFile(uri, token);
+  }
+
   Future<ProjectMessage> sendDirectMessage({
     required String token,
     required String projectId,
@@ -613,6 +763,20 @@ class AuthApiService {
       headers: {'Authorization': 'Bearer $token'},
     );
 
+    return _projectFromResponse(response);
+  }
+
+  Future<Project> uploadProjectPhoto({
+    required String token,
+    required String projectId,
+    required XFile photo,
+  }) async {
+    final response = await _postMultipart(
+      '/projects/$projectId/photo',
+      const {},
+      photo: photo,
+      headers: {'Authorization': 'Bearer $token'},
+    );
     return _projectFromResponse(response);
   }
 

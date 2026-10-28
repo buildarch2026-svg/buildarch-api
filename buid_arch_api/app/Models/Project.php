@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Project extends Model
 {
@@ -49,5 +50,10 @@ class Project extends Model
     public function directConversations(): HasMany
     {
         return $this->hasMany(ProjectConversation::class);
+    }
+
+    public function groupConversation(): HasOne
+    {
+        return $this->hasOne(ProjectGroupConversation::class);
     }
 }

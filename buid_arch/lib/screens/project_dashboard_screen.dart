@@ -5,6 +5,7 @@ import 'package:share_plus/share_plus.dart';
 import '../models/project.dart';
 import 'project_invitations_screen.dart';
 import 'project_documents_screen.dart';
+import 'project_group_voice_chat_screen.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 import '../widgets/app_bottom_nav.dart';
@@ -12,6 +13,7 @@ import '../widgets/dashboard_hero.dart';
 import '../widgets/dashboard_quick_action.dart';
 import '../widgets/dashboard_section_grid.dart';
 import '../widgets/notification_action_button.dart';
+import 'all_project_files_screen.dart';
 import 'project_members_screen.dart';
 
 /// Per-project dashboard, opened by tapping a project card.
@@ -262,7 +264,21 @@ class ProjectDashboardScreen extends StatelessWidget {
       bottomNavigationBar: AppBottomNav(
         current: AppTab.projects,
         onTap: (tab) {
-          if (tab != AppTab.projects) _comingSoon(context, tab.name);
+          if (tab == AppTab.chat) {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => ProjectGroupVoiceChatScreen(project: project),
+              ),
+            );
+          } else if (tab == AppTab.files) {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => AllProjectFilesScreen(returnProject: project),
+              ),
+            );
+          } else if (tab != AppTab.projects) {
+            _comingSoon(context, tab.name);
+          }
         },
       ),
     );

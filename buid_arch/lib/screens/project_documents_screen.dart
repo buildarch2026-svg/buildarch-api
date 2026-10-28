@@ -33,11 +33,26 @@ class _ProjectDocumentsScreenState extends State<ProjectDocumentsScreen> {
   bool _loading = true;
   bool _working = false;
   String? _error;
+  final _searchController = TextEditingController();
+  String _searchQuery = '';
 
   @override
   void initState() {
     super.initState();
+    _searchController.addListener(_onSearchChanged);
     _loadDocuments();
+  }
+
+  @override
+  void dispose() {
+    _searchController
+      ..removeListener(_onSearchChanged)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged() {
+    setState(() => _searchQuery = _searchController.text.trim().toLowerCase());
   }
 
   Future<String> _requireToken() async {
@@ -202,11 +217,20 @@ class _ProjectDocumentsScreenState extends State<ProjectDocumentsScreen> {
         '${_fileSize(document.size)}$dateLabel';
   }
 
-  List<ProjectDocument> get _visibleDocuments => widget.category == null
-      ? _documents
-      : _documents
-          .where((document) => document.category == widget.category)
-          .toList();
+  List<ProjectDocument> get _visibleDocuments {
+    final categoryDocuments = widget.category == null
+        ? _documents
+        : _documents
+            .where((document) => document.category == widget.category)
+            .toList();
+    if (_searchQuery.isEmpty) return categoryDocuments;
+    return categoryDocuments
+        .where((document) =>
+            document.name.toLowerCase().contains(_searchQuery) ||
+            (document.uploadedBy?.toLowerCase().contains(_searchQuery) ??
+                false))
+        .toList();
+  }
 
   String get _screenTitle =>
       widget.category == 'drawings' ? 'Drawings' : 'Project files';
@@ -275,83 +299,306 @@ class _ProjectDocumentsScreenState extends State<ProjectDocumentsScreen> {
                   ),
                 )
               : _visibleDocuments.isEmpty
-                  ? _emptyState()
+                  ? _fileList()
                   : RefreshIndicator(
                       onRefresh: _loadDocuments,
                       child: ListView.separated(
                         physics: const AlwaysScrollableScrollPhysics(),
                         padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
-                        itemCount: _visibleDocuments.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 10),
-                        itemBuilder: (context, index) =>
-                            _documentTile(_visibleDocuments[index]),
+                        itemCount: _visibleDocuments.length + 2,
+                        separatorBuilder: (_, __) => const SizedBox(height: 12),
+                        itemBuilder: (context, index) {
+                          if (index == 0) return _libraryHeader();
+                          if (index == 1) return _searchField();
+                          return _documentTile(_visibleDocuments[index - 2]);
+                        },
                       ),
                     ),
     );
   }
 
-  Widget _emptyState() {
-    return ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.all(32),
-      children: [
-        const SizedBox(height: 110),
-        Icon(
-          Icons.folder_open_outlined,
-          size: 56,
-          color: AppColors.outline.withValues(alpha: 0.7),
-        ),
-        const SizedBox(height: 16),
-        Text(
-          widget.category == 'drawings'
-              ? 'No drawings yet'
-              : 'No project files yet',
-          textAlign: TextAlign.center,
-          style: AppTextStyles.titleMd.copyWith(color: AppColors.textPrimary),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          widget.category == 'drawings'
-              ? 'Files uploaded by the project designer will appear here.'
-              : 'Upload a photo or PDF to share it with your project team.',
-          textAlign: TextAlign.center,
-          style: AppTextStyles.bodyMd.copyWith(
-            color: AppColors.onSurfaceVariant,
+  Widget _fileList() {
+    final noSearchResults = _documents.isNotEmpty && _searchQuery.isNotEmpty;
+    return RefreshIndicator(
+      onRefresh: _loadDocuments,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
+        children: [
+          _libraryHeader(),
+          const SizedBox(height: 12),
+          _searchField(),
+          const SizedBox(height: 28),
+          Icon(
+            noSearchResults
+                ? Icons.search_off_rounded
+                : Icons.folder_open_rounded,
+            size: 52,
+            color: AppColors.copper,
           ),
+          const SizedBox(height: 14),
+          Text(
+            noSearchResults
+                ? 'No matching files'
+                : widget.category == 'drawings'
+                    ? 'No drawings yet'
+                    : 'Your project library is empty',
+            textAlign: TextAlign.center,
+            style: AppTextStyles.titleMd.copyWith(color: AppColors.textPrimary),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            noSearchResults
+                ? 'Try another file name or uploader.'
+                : widget.category == 'drawings'
+                    ? 'Drawings uploaded by your project team will show up here.'
+                    : 'Upload a photo or PDF to keep important project files '
+                        'in one place.',
+            textAlign: TextAlign.center,
+            style: AppTextStyles.bodyMd.copyWith(
+              color: AppColors.onSurfaceVariant,
+            ),
+          ),
+          if (noSearchResults)
+            Padding(
+              padding: const EdgeInsets.only(top: 14),
+              child: Center(
+                child: TextButton(
+                  onPressed: _searchController.clear,
+                  child: const Text('Clear search'),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _libraryHeader() {
+    final pdfCount = _documents.where(_isPdf).length;
+    final photoCount = _documents.length - pdfCount;
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AppColors.darkBrown, AppColors.deepBrown, AppColors.primary],
         ),
-      ],
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(13),
+                ),
+                child: const Icon(
+                  Icons.folder_copy_outlined,
+                  color: AppColors.secondaryContainer,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'PROJECT LIBRARY',
+                      style: AppTextStyles.labelTechnical.copyWith(
+                        color: AppColors.secondaryContainer,
+                        letterSpacing: 1.1,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      '${_documents.length} '
+                      '${_documents.length == 1 ? 'file' : 'files'} shared',
+                      style: AppTextStyles.titleMd.copyWith(
+                        color: Colors.white,
+                        fontSize: 17,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            'Keep drawings, photos, and project documents together.',
+            style: AppTextStyles.bodySm.copyWith(
+              color: Colors.white.withValues(alpha: 0.78),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _summaryChip(Icons.picture_as_pdf_outlined, 'PDFs', pdfCount),
+              _summaryChip(Icons.image_outlined, 'Photos', photoCount),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _summaryChip(IconData icon, String label, int count) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: AppColors.secondaryContainer),
+          const SizedBox(width: 6),
+          Text(
+            '$count $label',
+            style: AppTextStyles.bodySm.copyWith(color: Colors.white),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _searchField() {
+    return TextField(
+      controller: _searchController,
+      textInputAction: TextInputAction.search,
+      decoration: InputDecoration(
+        hintText: 'Search files or people',
+        prefixIcon: const Icon(Icons.search_rounded),
+        suffixIcon: _searchQuery.isEmpty
+            ? null
+            : IconButton(
+                tooltip: 'Clear search',
+                onPressed: _searchController.clear,
+                icon: const Icon(Icons.close_rounded),
+              ),
+        filled: true,
+        fillColor: AppColors.surfaceContainerLowest,
+        contentPadding: const EdgeInsets.symmetric(vertical: 14),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: AppColors.border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: AppColors.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: AppColors.secondary, width: 1.5),
+        ),
+      ),
     );
   }
 
   Widget _documentTile(ProjectDocument document) {
-    final isPdf = document.mimeType == 'application/pdf' ||
-        document.name.toLowerCase().endsWith('.pdf');
-    return Card(
-      color: AppColors.surfaceContainerLow,
-      child: ListTile(
-        leading: Icon(
-          isPdf ? Icons.picture_as_pdf_outlined : Icons.image_outlined,
-          color: AppColors.secondary,
-        ),
-        title: Text(
-          document.name,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: AppTextStyles.bodyMd.copyWith(
-            fontWeight: FontWeight.w600,
-            color: AppColors.textPrimary,
+    final isPdf = _isPdf(document);
+    final iconColor = isPdf ? AppColors.tertiary : AppColors.secondary;
+    return Material(
+      color: AppColors.surfaceContainerLowest,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: _working ? null : () => _download(document),
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(12, 12, 8, 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: iconColor.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(13),
+                ),
+                child: Icon(
+                  isPdf ? Icons.picture_as_pdf_rounded : Icons.image_rounded,
+                  color: iconColor,
+                  size: 25,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      document.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyles.bodyMd.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      _uploadedLabel(document),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyles.bodySm.copyWith(
+                        color: AppColors.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: iconColor.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        isPdf ? 'PDF' : 'IMAGE',
+                        style: AppTextStyles.labelTechnical.copyWith(
+                          color: iconColor,
+                          letterSpacing: 0.6,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: 'Download ${document.name}',
+                onPressed: _working ? null : () => _download(document),
+                icon: const Icon(
+                  Icons.download_rounded,
+                  color: AppColors.primaryContainer,
+                ),
+              ),
+            ],
           ),
         ),
-        subtitle: Text(_uploadedLabel(document)),
-        trailing: IconButton(
-          tooltip: 'Download ${document.name}',
-          onPressed: _working ? null : () => _download(document),
-          icon: const Icon(Icons.download_outlined),
-        ),
-        onTap: _working ? null : () => _download(document),
       ),
     );
   }
+
+  bool _isPdf(ProjectDocument document) =>
+      document.mimeType == 'application/pdf' ||
+      document.name.toLowerCase().endsWith('.pdf');
 }
 
 class _SaveFileNameDialog extends StatefulWidget {
