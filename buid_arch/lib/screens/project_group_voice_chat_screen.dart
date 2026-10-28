@@ -384,9 +384,13 @@ class _ProjectGroupVoiceChatScreenState
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Project group chat'),
             Text(
-              '${_members.length} members · ${widget.project.name}',
+              widget.project.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            Text(
+              '${_members.length} members',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: AppTextStyles.bodySm.copyWith(
@@ -395,42 +399,18 @@ class _ProjectGroupVoiceChatScreenState
             ),
           ],
         ),
+        actions: [
+          IconButton(
+            tooltip: 'Refresh chat',
+            onPressed: _loadMessages,
+            icon: const Icon(Icons.refresh_rounded),
+          ),
+        ],
       ),
       body: Column(
         children: [
-          _groupChatNotice(),
           Expanded(child: _messageList()),
           _composer(),
-        ],
-      ),
-    );
-  }
-
-  Widget _groupChatNotice() {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.groups_2_outlined, color: AppColors.secondary),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              _members.isEmpty
-                  ? 'Share messages with everyone in this project.'
-                  : 'Shared with ${_members.length} project members.',
-              style: AppTextStyles.bodySm.copyWith(
-                color: AppColors.onSurfaceVariant,
-              ),
-            ),
-          ),
-          const Icon(Icons.forum_outlined,
-              size: 18, color: AppColors.secondary),
         ],
       ),
     );
@@ -466,24 +446,16 @@ class _ProjectGroupVoiceChatScreenState
             mainAxisSize: MainAxisSize.min,
             children: [
               const Icon(
-                Icons.graphic_eq_rounded,
-                size: 52,
+                Icons.forum_outlined,
+                size: 48,
                 color: AppColors.copper,
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 12),
               Text(
-                'Start the group conversation',
+                'No messages yet',
                 textAlign: TextAlign.center,
                 style: AppTextStyles.titleMd.copyWith(
                   color: AppColors.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 7),
-              Text(
-                'Send a message, share a photo, or record a voice note for the team.',
-                textAlign: TextAlign.center,
-                style: AppTextStyles.bodyMd.copyWith(
-                  color: AppColors.onSurfaceVariant,
                 ),
               ),
             ],
@@ -513,12 +485,22 @@ class _ProjectGroupVoiceChatScreenState
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         constraints: BoxConstraints(
-          maxWidth: MediaQuery.sizeOf(context).width * 0.82,
+          maxWidth: MediaQuery.sizeOf(context).width * 0.78,
         ),
-        margin: const EdgeInsets.symmetric(vertical: 5),
-        padding: const EdgeInsets.fromLTRB(13, 10, 10, 8),
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.fromLTRB(14, 11, 12, 8),
         decoration: BoxDecoration(
-          color: bubbleColor,
+          color: isMine ? bubbleColor : AppColors.surfaceContainerLowest,
+          border: isMine ? null : Border.all(color: AppColors.border),
+          boxShadow: isMine
+              ? null
+              : [
+                  BoxShadow(
+                    color: AppColors.deepBrown.withAlpha(12),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
           borderRadius: BorderRadius.only(
             topLeft: const Radius.circular(18),
             topRight: const Radius.circular(18),
@@ -629,9 +611,9 @@ class _ProjectGroupVoiceChatScreenState
       top: false,
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
         decoration: const BoxDecoration(
-          color: AppColors.surfaceContainerLowest,
+          color: AppColors.surface,
           border: Border(top: BorderSide(color: AppColors.border)),
         ),
         child: Column(
@@ -656,12 +638,17 @@ class _ProjectGroupVoiceChatScreenState
             Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                IconButton(
+                IconButton.filledTonal(
                   tooltip: 'Take a photo or choose an image',
                   onPressed: _sending || _recording ? null : _pickImage,
-                  icon: const Icon(Icons.add_a_photo_outlined),
-                  color: AppColors.secondary,
+                  icon: const Icon(Icons.add_photo_alternate_outlined),
+                  style: IconButton.styleFrom(
+                    foregroundColor: AppColors.secondary,
+                    backgroundColor: AppColors.surfaceContainerLow,
+                    fixedSize: const Size(44, 44),
+                  ),
                 ),
+                const SizedBox(width: 8),
                 Expanded(
                   child: TextField(
                     controller: _messageController,
@@ -672,25 +659,33 @@ class _ProjectGroupVoiceChatScreenState
                     enabled: !_sending && !_recording,
                     onSubmitted: (_) => _sendText(),
                     decoration: InputDecoration(
-                      hintText: 'Message the project team...',
+                      hintText: 'Message',
                       counterText: '',
                       filled: true,
-                      fillColor: AppColors.surface,
+                      fillColor: AppColors.surfaceContainerLowest,
                       contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 11,
+                        horizontal: 16,
+                        vertical: 12,
                       ),
                       border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(22),
-                        borderSide: const BorderSide(color: AppColors.border),
+                        borderRadius: BorderRadius.circular(24),
+                        borderSide: BorderSide.none,
                       ),
                       enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(22),
+                        borderRadius: BorderRadius.circular(24),
                         borderSide: const BorderSide(color: AppColors.border),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24),
+                        borderSide: const BorderSide(
+                          color: AppColors.secondary,
+                          width: 1.4,
+                        ),
                       ),
                     ),
                   ),
                 ),
+                const SizedBox(width: 4),
                 IconButton(
                   tooltip: _recording
                       ? 'Stop and send voice note'
@@ -700,6 +695,7 @@ class _ProjectGroupVoiceChatScreenState
                     _recording
                         ? Icons.stop_circle_outlined
                         : Icons.mic_none_rounded,
+                    size: 24,
                     color: _recording ? AppColors.error : AppColors.secondary,
                   ),
                 ),
@@ -709,6 +705,7 @@ class _ProjectGroupVoiceChatScreenState
                   style: IconButton.styleFrom(
                     backgroundColor: AppColors.primaryContainer,
                     foregroundColor: Colors.white,
+                    fixedSize: const Size(48, 48),
                   ),
                   icon: _sending
                       ? const SizedBox.square(
@@ -721,13 +718,6 @@ class _ProjectGroupVoiceChatScreenState
                       : const Icon(Icons.send_rounded),
                 ),
               ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Text, images, and voice notes',
-              style: AppTextStyles.labelTechnical.copyWith(
-                color: AppColors.outline,
-              ),
             ),
           ],
         ),

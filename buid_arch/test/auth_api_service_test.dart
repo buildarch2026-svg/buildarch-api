@@ -22,6 +22,95 @@ void main() {
     );
   });
 
+  test('project transaction requests send the saved session as a bearer token',
+      () async {
+    final client = _RecordingClient(
+      responseBody: {
+        'transactions': [
+          {
+            'id': 8,
+            'project_id': 3,
+            'payer_user_id': 12,
+            'payee_name': 'Build Mart',
+            'amount': 1250.50,
+            'currency': 'INR',
+            'status': 'pending',
+            'payment_method': 'UPI',
+            'payment_type': 'provider',
+          },
+        ],
+        'transaction': {
+          'id': 8,
+          'project_id': 3,
+          'payer_user_id': 12,
+          'payee_name': 'Build Mart',
+          'amount': 1250.50,
+          'currency': 'INR',
+          'status': 'pending',
+          'payment_method': 'UPI',
+          'payment_type': 'provider',
+        },
+      },
+    );
+    final service = AuthApiService(client: client);
+
+    await service.getProjectTransactions(
+      token: 'test-session-token',
+      projectId: '3',
+    );
+    await service.createProjectTransaction(
+      token: 'test-session-token',
+      projectId: '3',
+      payeeName: 'Build Mart',
+      payeeType: 'shop',
+      amount: 1250.50,
+      currency: 'INR',
+      status: 'pending',
+      paymentMethod: 'UPI',
+      paymentType: 'provider',
+    );
+    await service.updateProjectTransactionStatus(
+      token: 'test-session-token',
+      projectId: '3',
+      transactionId: '8',
+      status: 'completed',
+    );
+
+    expect(client.requests, hasLength(3));
+    const requestNames = ['list', 'create', 'update status'];
+    for (var index = 0; index < client.requests.length; index++) {
+      expect(
+        _authorizationHeader(client.requests[index])
+            == 'Bearer test-session-token',
+        isTrue,
+        reason: 'The transaction ${requestNames[index]} request lost its token.',
+      );
+    }
+  });
+
+  test('notification requests send the saved session as a bearer token',
+      () async {
+    final client = _RecordingClient(
+      responseBody: {'notifications': [], 'unread_count': 0},
+    );
+    final service = AuthApiService(client: client);
+
+    await service.getNotifications(token: 'test-session-token');
+    await service.markNotificationRead(
+      token: 'test-session-token',
+      notificationId: '4',
+    );
+
+    expect(client.requests, hasLength(2));
+    for (final request in client.requests) {
+      expect(
+        _authorizationHeader(request) == 'Bearer test-session-token',
+        isTrue,
+        reason: 'A notification request lost its session token.',
+      );
+    }
+  });
+
   test('OTP request sends a normalized phone number to the correct endpoint',
       () async {
     final client = _RecordingClient();

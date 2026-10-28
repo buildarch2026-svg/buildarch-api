@@ -52,6 +52,11 @@ class Project extends Model
         return $this->hasMany(ProjectConversation::class);
     }
 
+    public function transactions(): HasMany
+    {
+        return $this->hasMany(ProjectTransaction::class);
+    }
+
     public function groupConversation(): HasOne
     {
         return $this->hasOne(ProjectGroupConversation::class);

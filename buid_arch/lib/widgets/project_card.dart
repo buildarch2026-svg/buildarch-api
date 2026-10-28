@@ -118,14 +118,6 @@ class ProjectCard extends StatelessWidget {
                         ),
                       ),
                     ],
-                    const SizedBox(height: 16),
-                    Text(
-                      'Progress tracking · Coming soon',
-                      style: AppTextStyles.bodySm.copyWith(
-                        color: AppColors.outline,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
                   ],
                 ),
               ),

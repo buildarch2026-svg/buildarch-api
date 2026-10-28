@@ -13,6 +13,7 @@ import '../models/project_invitation.dart';
 import '../models/project_message.dart';
 import '../models/project_member.dart';
 import '../models/project_notification.dart';
+import '../models/project_transaction.dart';
 import '../models/project_type.dart';
 
 class AuthApiException implements Exception {
@@ -160,7 +161,7 @@ class AuthApiService {
   }) async {
     final response = await _get(
       '/notifications',
-      headers: {'Authorization': '******'},
+      headers: {'Authorization': 'Bearer $token'},
     );
     final notifications = response['notifications'];
     final unreadCount = response['unread_count'];
@@ -191,7 +192,7 @@ class AuthApiService {
     await _post(
       '/notifications/${Uri.encodeComponent(notificationId)}/read',
       const {},
-      headers: {'Authorization': '******'},
+      headers: {'Authorization': 'Bearer $token'},
     );
   }
 
@@ -216,6 +217,113 @@ class AuthApiService {
         }
         throw const FormatException('The invitation response was invalid.');
       }).toList();
+    } on FormatException catch (error) {
+      throw AuthApiException(error.message);
+    }
+  }
+
+  Future<List<ProjectTransaction>> getProjectTransactions({
+    required String token,
+    required String projectId,
+  }) async {
+    final response = await _get(
+      '/projects/$projectId/transactions',
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    final transactions = response['transactions'];
+    if (transactions is! List) {
+      throw const AuthApiException(
+          'The project transactions response was invalid.');
+    }
+
+    try {
+      return transactions.map((transaction) {
+        if (transaction is Map) {
+          return ProjectTransaction.fromJson(
+              Map<String, dynamic>.from(transaction));
+        }
+        throw const FormatException(
+            'The project transaction response was invalid.');
+      }).toList();
+    } on FormatException catch (error) {
+      throw AuthApiException(error.message);
+    }
+  }
+
+  Future<ProjectTransaction> createProjectTransaction({
+    required String token,
+    required String projectId,
+    required String payeeName,
+    required String payeeType,
+    required double amount,
+    required String currency,
+    required String status,
+    required String paymentMethod,
+    required String paymentType,
+    String? payeeVpa,
+    String? attemptId,
+    String? qrPayload,
+    String? description,
+    String? category,
+    String? providerReference,
+  }) async {
+    final response = await _post(
+      '/projects/$projectId/transactions',
+      {
+        'payee_name': payeeName,
+        'payee_type': payeeType,
+        if (payeeVpa != null) 'payee_vpa': payeeVpa,
+        'amount': amount,
+        'currency': currency,
+        'status': status,
+        'payment_method': paymentMethod,
+        'payment_type': paymentType,
+        if (attemptId != null) 'attempt_id': attemptId,
+        if (qrPayload != null) 'qr_payload': qrPayload,
+        if (description != null && description.isNotEmpty)
+          'description': description,
+        if (category != null && category.isNotEmpty) 'category': category,
+        if (providerReference != null && providerReference.isNotEmpty)
+          'provider_reference': providerReference,
+      },
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    final transaction = response['transaction'];
+    if (transaction is! Map) {
+      throw const AuthApiException(
+          'The project transaction response was invalid.');
+    }
+    try {
+      return ProjectTransaction.fromJson(
+          Map<String, dynamic>.from(transaction));
+    } on FormatException catch (error) {
+      throw AuthApiException(error.message);
+    }
+  }
+
+  Future<ProjectTransaction> updateProjectTransactionStatus({
+    required String token,
+    required String projectId,
+    required String transactionId,
+    required String status,
+    String? providerReference,
+  }) async {
+    final response = await _patch(
+      '/projects/$projectId/transactions/$transactionId',
+      {
+        'status': status,
+        if (providerReference != null) 'provider_reference': providerReference,
+      },
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    final transaction = response['transaction'];
+    if (transaction is! Map) {
+      throw const AuthApiException(
+          'The project transaction response was invalid.');
+    }
+    try {
+      return ProjectTransaction.fromJson(
+          Map<String, dynamic>.from(transaction));
     } on FormatException catch (error) {
       throw AuthApiException(error.message);
     }

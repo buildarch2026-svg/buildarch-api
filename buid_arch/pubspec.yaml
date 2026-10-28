@@ -29,6 +29,8 @@ dependencies:
   audioplayers: ^6.8.1
   flutter_map: ^8.3.2
   latlong2: ^0.10.1
+  mobile_scanner: 6.0.2
+  upi_intent: 1.0.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

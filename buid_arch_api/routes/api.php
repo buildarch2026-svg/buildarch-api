@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\ProjectGroupChatController;
 use App\Http\Controllers\Api\ProjectInvitationController;
 use App\Http\Controllers\Api\ProjectMemberController;
 use App\Http\Controllers\Api\ProjectMessageController;
+use App\Http\Controllers\Api\ProjectTransactionController;
 use App\Http\Controllers\Api\UserProfileController;
 use App\Http\Controllers\Api\WhatsAppTestController;
 use Illuminate\Http\Request;
@@ -84,6 +85,14 @@ Route::middleware('auth:sanctum')->group(function () {
         ->middleware('throttle:30,1');
     Route::post('/projects/{project}/documents', [ProjectDocumentController::class, 'store'])
         ->middleware('throttle:10,1');
+    Route::get('/projects/{project}/transactions', [ProjectTransactionController::class, 'index'])
+        ->middleware('throttle:30,1');
+    Route::post('/projects/{project}/transactions', [ProjectTransactionController::class, 'store'])
+        ->middleware('throttle:30,1');
+    Route::patch(
+        '/projects/{project}/transactions/{transaction}',
+        [ProjectTransactionController::class, 'updateStatus'],
+    )->whereNumber('transaction')->middleware('throttle:30,1');
     Route::get(
         '/projects/{project}/documents/{document}',
         [ProjectDocumentController::class, 'download'],

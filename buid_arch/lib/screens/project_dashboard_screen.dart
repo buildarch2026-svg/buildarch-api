@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../models/project.dart';
+import '../navigation/profile_navigation.dart';
 import 'project_invitations_screen.dart';
 import 'project_documents_screen.dart';
 import 'project_group_voice_chat_screen.dart';
+import 'project_transactions_screen.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 import '../widgets/app_bottom_nav.dart';
@@ -90,22 +92,35 @@ class ProjectDashboardScreen extends StatelessWidget {
           children: [
             DashboardHero(project: project),
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
               child: Card(
                 color: AppColors.surfaceContainerLow,
                 child: ListTile(
-                  leading: const Icon(
-                    Icons.location_on_outlined,
-                    color: AppColors.secondary,
+                  dense: true,
+                  minVerticalPadding: 4,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14),
+                  leading: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: const BoxDecoration(
+                      color: AppColors.surfaceContainer,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.location_on_outlined,
+                      color: AppColors.secondary,
+                      size: 20,
+                    ),
                   ),
                   title: Text(
                     project.location,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: AppTextStyles.bodyMd.copyWith(
                       fontWeight: FontWeight.w600,
                       color: AppColors.textPrimary,
                     ),
                   ),
-                  subtitle: const Text('Project location'),
                   trailing: IconButton(
                     tooltip: 'Share directions',
                     onPressed: () => _shareProjectLocation(context),
@@ -114,40 +129,11 @@ class ProjectDashboardScreen extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 20),
-
-            // Progress
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Progress & stages',
-                        style: AppTextStyles.bodyMd.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.onSurface,
-                        ),
-                      ),
-                      Text(
-                        'Coming soon',
-                        style: AppTextStyles.bodySm
-                            .copyWith(color: AppColors.outline),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // Quick actions
+            const SizedBox(height: 12),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
                   DashboardQuickAction(
                     icon: Icons.cloud_upload_outlined,
@@ -159,13 +145,24 @@ class ProjectDashboardScreen extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const DashboardQuickAction(
-                    icon: Icons.document_scanner_outlined,
-                    label: 'Scan',
-                  ),
-                  const DashboardQuickAction(
+                  DashboardQuickAction(
                     icon: Icons.payments_outlined,
                     label: 'Pay',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            ProjectTransactionsScreen(project: project),
+                      ),
+                    ),
+                  ),
+                  DashboardQuickAction(
+                    icon: Icons.groups_outlined,
+                    label: 'Team',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => ProjectMembersScreen(project: project),
+                      ),
+                    ),
                   ),
                   if (project.isOwner)
                     DashboardQuickAction(
@@ -178,39 +175,7 @@ class ProjectDashboardScreen extends StatelessWidget {
                         ),
                       ),
                     ),
-                  const DashboardQuickAction(
-                    icon: Icons.more_horiz,
-                    label: 'More',
-                  ),
                 ],
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // Project members are loaded from the authenticated API.
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Card(
-                color: AppColors.surfaceContainerLow,
-                child: ListTile(
-                  leading: const Icon(
-                    Icons.groups_outlined,
-                    color: AppColors.secondary,
-                  ),
-                  title: Text(
-                    'Project team',
-                    style: AppTextStyles.bodyMd.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => ProjectMembersScreen(project: project),
-                    ),
-                  ),
-                ),
               ),
             ),
             const SizedBox(height: 24),
@@ -276,6 +241,8 @@ class ProjectDashboardScreen extends StatelessWidget {
                 builder: (_) => AllProjectFilesScreen(returnProject: project),
               ),
             );
+          } else if (tab == AppTab.profile) {
+            ProfileNavigation.open(context);
           } else if (tab != AppTab.projects) {
             _comingSoon(context, tab.name);
           }

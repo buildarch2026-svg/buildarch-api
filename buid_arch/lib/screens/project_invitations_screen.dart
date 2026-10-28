@@ -274,41 +274,55 @@ class _ProjectInvitationsScreenState extends State<ProjectInvitationsScreen> {
       body: RefreshIndicator(
         onRefresh: _loadInvitations,
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
           children: [
-            Text(
-              widget.project.name,
-              style: AppTextStyles.cardTitle.copyWith(
-                color: AppColors.textPrimary,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Create a role-specific invitation. The QR/link expires after '
-              '7 days.',
-              style: AppTextStyles.bodyMd.copyWith(
-                color: AppColors.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 16),
             Row(
               children: [
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: _creating
-                        ? null
-                        : () => _createInvitation('contractor'),
-                    icon: const Icon(Icons.engineering_outlined),
-                    label: const Text('Contractor'),
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: const BoxDecoration(
+                    color: AppColors.surfaceContainer,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.home_work_outlined,
+                    color: AppColors.secondary,
+                    size: 21,
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: FilledButton.tonalIcon(
+                  child: Text(
+                    widget.project.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTextStyles.titleMd.copyWith(
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                Expanded(
+                  child: _roleAction(
+                    icon: Icons.engineering_outlined,
+                    label: 'Contractor',
+                    onPressed: _creating
+                        ? null
+                        : () => _createInvitation('contractor'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _roleAction(
+                    icon: Icons.design_services_outlined,
+                    label: 'Designer',
                     onPressed:
                         _creating ? null : () => _createInvitation('designer'),
-                    icon: const Icon(Icons.design_services_outlined),
-                    label: const Text('Designer'),
                   ),
                 ),
               ],
@@ -318,12 +332,21 @@ class _ProjectInvitationsScreenState extends State<ProjectInvitationsScreen> {
               const LinearProgressIndicator(),
             ],
             const SizedBox(height: 24),
-            Text(
-              'Invitations',
-              style: AppTextStyles.bodyMd.copyWith(
-                color: AppColors.textPrimary,
-                fontWeight: FontWeight.w700,
-              ),
+            Row(
+              children: [
+                const Icon(
+                  Icons.qr_code_2_rounded,
+                  size: 20,
+                  color: AppColors.secondary,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Invitations',
+                  style: AppTextStyles.titleMd.copyWith(
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 8),
             if (_loading)
@@ -347,6 +370,30 @@ class _ProjectInvitationsScreenState extends State<ProjectInvitationsScreen> {
     );
   }
 
+  Widget _roleAction({
+    required IconData icon,
+    required String label,
+    required VoidCallback? onPressed,
+  }) {
+    return FilledButton.tonal(
+      onPressed: onPressed,
+      style: FilledButton.styleFrom(
+        backgroundColor: AppColors.surfaceContainerLow,
+        foregroundColor: AppColors.primary,
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 25),
+          const SizedBox(height: 7),
+          Text(label),
+        ],
+      ),
+    );
+  }
+
   Widget _errorPanel() {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 24),
@@ -361,38 +408,90 @@ class _ProjectInvitationsScreenState extends State<ProjectInvitationsScreen> {
 
   Widget _invitationCard(ProjectInvitation invitation) {
     final pending = invitation.status == 'pending';
+    final roleIcon = invitation.role == 'contractor'
+        ? Icons.engineering_outlined
+        : Icons.design_services_outlined;
     return Card(
       color: AppColors.surfaceContainerLow,
       margin: const EdgeInsets.only(bottom: 10),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: ListTile(
-          title: Text(
-            '${_roleName(invitation.role)} · ${_status(invitation.status)}',
-            style: AppTextStyles.bodyMd.copyWith(
-              fontWeight: FontWeight.w700,
-              color: AppColors.textPrimary,
-            ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.fromLTRB(14, 4, 4, 4),
+        leading: Container(
+          width: 42,
+          height: 42,
+          decoration: const BoxDecoration(
+            color: AppColors.surfaceContainer,
+            shape: BoxShape.circle,
           ),
-          subtitle: Text(
-            'Created ${_date(invitation.createdAt)} · '
-            'Expires ${_date(invitation.expiresAt)}',
-          ),
-          trailing: PopupMenuButton<String>(
-            onSelected: (action) {
-              if (action == 'qr') _showInvitationQr(invitation);
-              if (action == 'revoke') _confirmRevoke(invitation);
-            },
-            itemBuilder: (context) => [
-              if (invitation.token != null)
-                const PopupMenuItem(value: 'qr', child: Text('View QR code')),
-              if (pending)
-                const PopupMenuItem(
-                  value: 'revoke',
-                  child: Text('Revoke invitation'),
+          child: Icon(roleIcon, color: AppColors.secondary, size: 22),
+        ),
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(
+                _roleName(invitation.role),
+                style: AppTextStyles.bodyMd.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
                 ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            _statusChip(invitation.status),
+          ],
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 5),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.schedule_rounded,
+                size: 14,
+                color: AppColors.outline,
+              ),
+              const SizedBox(width: 5),
+              Text(
+                'Expires ${_date(invitation.expiresAt)}',
+                style: AppTextStyles.bodySm.copyWith(
+                  color: AppColors.onSurfaceVariant,
+                ),
+              ),
             ],
           ),
+        ),
+        trailing: PopupMenuButton<String>(
+          onSelected: (action) {
+            if (action == 'qr') _showInvitationQr(invitation);
+            if (action == 'revoke') _confirmRevoke(invitation);
+          },
+          itemBuilder: (context) => [
+            if (invitation.token != null)
+              const PopupMenuItem(value: 'qr', child: Text('View QR code')),
+            if (pending)
+              const PopupMenuItem(
+                value: 'revoke',
+                child: Text('Revoke invitation'),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _statusChip(String status) {
+    final isAccepted = status == 'accepted';
+    final color = isAccepted ? AppColors.success : AppColors.outline;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withAlpha(20),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        _status(status),
+        style: AppTextStyles.bodySm.copyWith(
+          color: color,
+          fontWeight: FontWeight.w600,
         ),
       ),
     );

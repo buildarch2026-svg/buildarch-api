@@ -1,18 +1,16 @@
 import 'package:flutter/material.dart';
 
 import '../models/app_role.dart';
-import '../services/account_session_service.dart';
 import '../services/auth_session_service.dart';
 import '../services/projects_store.dart';
 import '../services/user_role_service.dart';
+import '../navigation/profile_navigation.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 import '../widgets/project_card.dart';
 import '../widgets/notification_action_button.dart';
 import 'create_project_screen.dart';
-import 'login_screen.dart';
 import 'project_dashboard_screen.dart';
-import 'profile_screen.dart';
 
 /// "Your Projects" - the home owner's landing screen after login/unlock.
 /// Shows an empty state until the first project is created.
@@ -82,64 +80,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
   }
 
   Future<void> _openProfile() async {
-    try {
-      final user = await AuthSessionService.instance.readUser();
-      if (!mounted) return;
-      await Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => ProfileScreen(
-            user: user ?? const {},
-            onLogout: _logout,
-          ),
-        ),
-      );
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(content: Text('Could not load your profile.')),
-        );
-    }
-  }
-
-  Future<void> _logout() async {
-    final shouldLogout = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Log out?'),
-        content: const Text(
-          'You can sign in again with this or another phone number.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Log out'),
-          ),
-        ],
-      ),
-    );
-    if (shouldLogout != true || !mounted) return;
-
-    final serverRevoked = await AccountSessionService.instance.signOut();
-    if (!mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
-      (route) => false,
-    );
-    if (!serverRevoked) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Signed out on this device, but could not revoke the server session.',
-          ),
-        ),
-      );
-    }
+    await ProfileNavigation.open(context);
   }
 
   @override
@@ -276,48 +217,9 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
 
     final ownedProjects =
         store.projects.where((project) => project.isOwner).toList();
-    final joinedCount =
-        store.projects.where((project) => !project.isOwner).length;
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
       children: [
-        Text(
-          'Projects you own',
-          style: AppTextStyles.cardTitle.copyWith(
-            fontSize: 25,
-            color: AppColors.textPrimary,
-          ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          'Projects you created and own. Create projects and manage their '
-          'teams here.',
-          style: AppTextStyles.bodyMd.copyWith(
-            color: AppColors.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(height: 20),
-        Row(
-          children: [
-            Expanded(
-              child: _summaryCard(
-                icon: Icons.home_work_outlined,
-                label: 'Owned projects',
-                value: '${ownedProjects.length}',
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _summaryCard(
-                icon: Icons.groups_2_outlined,
-                label: 'Joined (other tab)',
-                value: '$joinedCount',
-                expanded: true,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 26),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           crossAxisAlignment: CrossAxisAlignment.center,
@@ -328,7 +230,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                 Text(
                   'Projects you own',
                   style: AppTextStyles.cardTitle.copyWith(
-                    fontSize: 18,
+                    fontSize: 25,
                     color: AppColors.textPrimary,
                   ),
                 ),
@@ -336,25 +238,19 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                 Text(
                   '${ownedProjects.length} '
                   '${ownedProjects.length == 1 ? 'project' : 'projects'}',
-                  style: AppTextStyles.bodySm.copyWith(
+                  style: AppTextStyles.bodyMd.copyWith(
                     color: AppColors.outline,
                   ),
                 ),
               ],
             ),
-            FilledButton.icon(
+            IconButton.filled(
+              tooltip: 'Add project',
               onPressed: _openCreateProject,
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('New project'),
+              icon: const Icon(Icons.add_home_work_outlined),
               style: FilledButton.styleFrom(
                 backgroundColor: AppColors.primaryContainer,
                 foregroundColor: Colors.white,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                textStyle: AppTextStyles.bodySm.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(13),
                 ),
@@ -377,26 +273,6 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
             ),
             const SizedBox(height: 12),
           ],
-        const SizedBox(height: 24),
-        Text(
-          'Coming soon',
-          style: AppTextStyles.cardTitle.copyWith(
-            fontSize: 16,
-            color: AppColors.textPrimary,
-          ),
-        ),
-        const SizedBox(height: 8),
-        const Card(
-          color: AppColors.surfaceContainerLow,
-          child: ListTile(
-            leading: Icon(Icons.upcoming_outlined),
-            title: Text('Project features in progress'),
-            subtitle: Text(
-              'Project editing and deletion, progress and stage updates, and '
-              'notifications will appear here when available.',
-            ),
-          ),
-        ),
       ],
     );
   }

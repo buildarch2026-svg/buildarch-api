@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/project.dart';
 import '../models/project_document.dart';
 import '../models/project_message.dart';
+import '../navigation/profile_navigation.dart';
 import '../services/auth_api_service.dart';
 import '../services/auth_session_service.dart';
 import '../theme/app_colors.dart';
@@ -156,14 +157,16 @@ class _AllProjectFilesScreenState extends State<AllProjectFilesScreen> {
       );
       return;
     }
+    if (tab == AppTab.profile) {
+      ProfileNavigation.open(context);
+      return;
+    }
     Navigator.of(context).pop();
   }
 
   @override
   Widget build(BuildContext context) {
     final visibleFiles = _visibleFiles;
-    final pdfCount = _files.where((file) => file.isPdf).length;
-
     return Scaffold(
       backgroundColor: AppColors.surface,
       appBar: AppBar(
@@ -194,7 +197,7 @@ class _AllProjectFilesScreenState extends State<AllProjectFilesScreen> {
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
                     children: [
-                      _summaryCard(pdfCount),
+                      _summaryCard(),
                       const SizedBox(height: 16),
                       _searchField(),
                       const SizedBox(height: 18),
@@ -202,7 +205,7 @@ class _AllProjectFilesScreenState extends State<AllProjectFilesScreen> {
                         _emptyState()
                       else ...[
                         Text(
-                          'ALL PROJECTS · ${visibleFiles.length} FILES',
+                          'FILES · ${visibleFiles.length}',
                           style: AppTextStyles.labelTechnical.copyWith(
                             color: AppColors.outline,
                             letterSpacing: 0.8,
@@ -244,73 +247,51 @@ class _AllProjectFilesScreenState extends State<AllProjectFilesScreen> {
     );
   }
 
-  Widget _summaryCard(int pdfCount) {
-    final voiceCount =
-        _files.where((file) => file.messageType == 'voice').length;
-    final imageCount = _files.length - pdfCount - voiceCount;
+  Widget _summaryCard() {
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [AppColors.darkBrown, AppColors.deepBrown, AppColors.primary],
-        ),
-        borderRadius: BorderRadius.circular(20),
+        color: AppColors.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.border),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.folder_copy_outlined,
-                color: AppColors.secondaryContainer,
-                size: 28,
-              ),
-              const SizedBox(width: 11),
-              Expanded(
-                child: Text(
-                  'Your shared project library',
-                  style: AppTextStyles.titleMd.copyWith(color: Colors.white),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Files uploaded to all your projects, together in one place.',
-            style: AppTextStyles.bodySm.copyWith(
-              color: Colors.white.withValues(alpha: 0.8),
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(
+              Icons.folder_copy_outlined,
+              color: AppColors.primary,
+              size: 25,
             ),
           ),
-          const SizedBox(height: 14),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _summaryChip('${_files.length} files'),
-              _summaryChip('$_projectCount projects'),
-              _summaryChip('$pdfCount PDFs'),
-              _summaryChip('$imageCount images'),
-              _summaryChip('$voiceCount voice notes'),
-            ],
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Shared files',
+                  style: AppTextStyles.titleMd.copyWith(
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  '${_files.length} files · $_projectCount projects',
+                  style: AppTextStyles.bodySm.copyWith(
+                    color: AppColors.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _summaryChip(String label) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.11),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Text(
-        label,
-        style: AppTextStyles.bodySm.copyWith(color: Colors.white),
       ),
     );
   }
@@ -359,16 +340,16 @@ class _AllProjectFilesScreenState extends State<AllProjectFilesScreen> {
             textAlign: TextAlign.center,
             style: AppTextStyles.titleMd.copyWith(color: AppColors.textPrimary),
           ),
-          const SizedBox(height: 7),
-          Text(
-            searching
-                ? 'Try another file or project name.'
-                : 'Files shared through your project file pages will appear here.',
-            textAlign: TextAlign.center,
-            style: AppTextStyles.bodyMd.copyWith(
-              color: AppColors.onSurfaceVariant,
+          if (!searching) ...[
+            const SizedBox(height: 7),
+            Text(
+              'Upload files from a project to see them here.',
+              textAlign: TextAlign.center,
+              style: AppTextStyles.bodySm.copyWith(
+                color: AppColors.onSurfaceVariant,
+              ),
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -382,18 +363,7 @@ class _AllProjectFilesScreenState extends State<AllProjectFilesScreen> {
         : file.messageType == 'voice'
             ? Icons.graphic_eq_rounded
             : Icons.image_rounded;
-    final typeLabel = isPdf
-        ? 'PDF'
-        : file.messageType == 'voice'
-            ? 'VOICE'
-            : 'IMAGE';
-    final uploadedBy = file.uploadedBy;
     final size = _fileSize(file.size);
-    final date = file.createdAt;
-    final dateLabel = date == null
-        ? ''
-        : ' · ${date.day.toString().padLeft(2, '0')}/'
-            '${date.month.toString().padLeft(2, '0')}/${date.year}';
 
     return Material(
       color: AppColors.surfaceContainerLowest,
@@ -413,7 +383,7 @@ class _AllProjectFilesScreenState extends State<AllProjectFilesScreen> {
             children: [
               Container(
                 width: 48,
-                height: 52,
+                height: 48,
                 decoration: BoxDecoration(
                   color: color.withValues(alpha: 0.10),
                   borderRadius: BorderRadius.circular(13),
@@ -446,21 +416,11 @@ class _AllProjectFilesScreenState extends State<AllProjectFilesScreen> {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      '$uploadedBy · $size$dateLabel',
-                      maxLines: 2,
+                      '${file.uploadedBy} · $size',
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: AppTextStyles.labelTechnical.copyWith(
-                        color: AppColors.outline,
-                        letterSpacing: 0,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      typeLabel,
-                      style: AppTextStyles.labelTechnical.copyWith(
-                        color: color,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.6,
+                      style: AppTextStyles.bodySm.copyWith(
+                        color: AppColors.onSurfaceVariant,
                       ),
                     ),
                   ],
