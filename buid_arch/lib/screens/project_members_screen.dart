@@ -5,6 +5,7 @@ import '../models/project_member.dart';
 import 'project_direct_chat_screen.dart';
 import '../services/auth_api_service.dart';
 import '../services/auth_session_service.dart';
+import '../services/projects_store.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 
@@ -22,8 +23,8 @@ class _ProjectMembersScreenState extends State<ProjectMembersScreen> {
   int? _currentUserId;
   bool _loading = true;
   String? _error;
+  final Set<int> _removingMemberIds = {};
   final _searchController = TextEditingController();
-  String _selectedRole = 'All';
 
   @override
   void initState() {
@@ -92,21 +93,17 @@ class _ProjectMembersScreenState extends State<ProjectMembersScreen> {
         _ => Icons.person_outline,
       };
 
-  List<ProjectMember> get _filteredMembers {
+  List<ProjectMember> get _searchedMembers {
     final query = _searchController.text.trim().toLowerCase();
+    if (query.isEmpty) return _visibleMembers;
     return _visibleMembers.where((member) {
-      final matchesQuery = query.isEmpty ||
-          member.name.toLowerCase().contains(query) ||
+      return member.name.toLowerCase().contains(query) ||
           _roleName(member.role).toLowerCase().contains(query);
-      final matchesRole =
-          _selectedRole == 'All' || _roleName(member.role) == _selectedRole;
-      return matchesQuery && matchesRole;
     }).toList();
   }
 
-  List<ProjectMember> get _visibleMembers => _members
-      .where((member) => member.userId != _currentUserId)
-      .toList();
+  List<ProjectMember> get _visibleMembers =>
+      _members.where((member) => member.userId != _currentUserId).toList();
 
   int _countRole(String role) =>
       _visibleMembers.where((member) => member.role == role).length;
@@ -116,6 +113,56 @@ class _ProjectMembersScreenState extends State<ProjectMembersScreen> {
     final date = '${joinedAt.day.toString().padLeft(2, '0')}/'
         '${joinedAt.month.toString().padLeft(2, '0')}/${joinedAt.year}';
     return 'Joined $date';
+  }
+
+  Future<void> _removeMember(ProjectMember member) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Remove team member?'),
+        content: Text(
+          '${member.name} will lose access to this project. Their existing messages and transaction history will be retained.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _removingMemberIds.add(member.userId));
+    try {
+      await ProjectsStore.instance.removeProjectMember(
+        projectId: widget.project.id,
+        memberUserId: member.userId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _members.removeWhere((item) => item.userId == member.userId);
+      });
+      await _loadMembers();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+              content: Text('${member.name} was removed from the project.')),
+        );
+    } on AuthApiException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(error.message)));
+    } finally {
+      if (mounted) setState(() => _removingMemberIds.remove(member.userId));
+    }
   }
 
   @override
@@ -215,12 +262,11 @@ class _ProjectMembersScreenState extends State<ProjectMembersScreen> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      _roleFilters(),
                       const SizedBox(height: 14),
-                      if (_filteredMembers.isEmpty)
+                      if (_searchedMembers.isEmpty)
                         _emptySearchState()
                       else
-                        for (final member in _filteredMembers) ...[
+                        for (final member in _searchedMembers) ...[
                           _memberCard(member),
                           const SizedBox(height: 10),
                         ],
@@ -362,40 +408,6 @@ class _ProjectMembersScreenState extends State<ProjectMembersScreen> {
     );
   }
 
-  Widget _roleFilters() {
-    const roles = ['All', 'Home Owner', 'Contractor', 'Designer'];
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          for (final role in roles) ...[
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: ChoiceChip(
-                label: Text(role),
-                selected: _selectedRole == role,
-                onSelected: (_) => setState(() => _selectedRole = role),
-                selectedColor: AppColors.primaryContainer,
-                labelStyle: AppTextStyles.bodySm.copyWith(
-                  color: _selectedRole == role
-                      ? Colors.white
-                      : AppColors.onSurfaceVariant,
-                  fontWeight: FontWeight.w600,
-                ),
-                side: BorderSide(
-                  color: _selectedRole == role
-                      ? AppColors.primaryContainer
-                      : AppColors.border,
-                ),
-                backgroundColor: AppColors.surfaceContainerLowest,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
   Widget _memberCard(ProjectMember member) {
     final isOwner = member.role == 'homeOwner';
     final canChat =
@@ -480,6 +492,17 @@ class _ProjectMembersScreenState extends State<ProjectMembersScreen> {
                       ],
                     ),
                     const SizedBox(height: 5),
+                    if (member.designation?.trim().isNotEmpty == true) ...[
+                      Text(
+                        member.designation!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTextStyles.bodySm.copyWith(
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                    ],
                     Text(
                       _joinedLabel(member.joinedAt),
                       style: AppTextStyles.bodySm.copyWith(
@@ -519,6 +542,35 @@ class _ProjectMembersScreenState extends State<ProjectMembersScreen> {
                   Icons.chat_bubble_outline,
                   size: 19,
                   color: AppColors.secondary,
+                ),
+              ],
+              if (widget.project.isOwner && !isOwner) ...[
+                const SizedBox(width: 4),
+                PopupMenuButton<String>(
+                  tooltip: 'Member options',
+                  enabled: !_removingMemberIds.contains(member.userId),
+                  onSelected: (action) {
+                    if (action == 'remove') _removeMember(member);
+                  },
+                  itemBuilder: (context) => const [
+                    PopupMenuItem(
+                      value: 'remove',
+                      child: Row(
+                        children: [
+                          Icon(Icons.person_remove_outlined),
+                          SizedBox(width: 12),
+                          Text('Remove from project'),
+                        ],
+                      ),
+                    ),
+                  ],
+                  icon: _removingMemberIds.contains(member.userId)
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.more_vert),
                 ),
               ],
             ],
@@ -575,7 +627,7 @@ class _ProjectMembersScreenState extends State<ProjectMembersScreen> {
           Text(
             isSearchEmpty
                 ? 'Accepted collaborators will appear here.'
-                : 'Try another name or choose a different role filter.',
+                : 'Try another name or search for a role.',
             textAlign: TextAlign.center,
             style: AppTextStyles.bodySm.copyWith(
               color: AppColors.onSurfaceVariant,

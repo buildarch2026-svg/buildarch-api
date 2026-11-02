@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../models/project.dart';
 import '../models/project_type.dart';
 import '../services/auth_api_service.dart';
 import '../services/current_location_service.dart';
@@ -16,7 +17,9 @@ import '../widgets/project_type_grid_tile.dart';
 
 /// Plain, icon-led "Create Project" form - no blueprint texture, minimal.
 class CreateProjectScreen extends StatefulWidget {
-  const CreateProjectScreen({super.key});
+  const CreateProjectScreen({super.key, this.project});
+
+  final Project? project;
 
   @override
   State<CreateProjectScreen> createState() => _CreateProjectScreenState();
@@ -38,6 +41,14 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
   @override
   void initState() {
     super.initState();
+    final project = widget.project;
+    if (project != null) {
+      _nameController.text = project.name;
+      _locationController.text = project.location;
+      _type = project.type;
+      _latitude = project.latitude;
+      _longitude = project.longitude;
+    }
     _nameController.addListener(() => setState(() {}));
     _locationController.addListener(_onLocationChanged);
   }
@@ -62,46 +73,28 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
     setState(() {});
   }
 
-  Future<void> _useCurrentLocation() async {
+  Future<void> _chooseLocationOnMap() async {
     if (_gettingLocation || _saving) return;
     setState(() => _gettingLocation = true);
     try {
-      final location =
-          await CurrentLocationService.instance.getCurrentLocation();
-      if (!mounted) return;
+      final location = await Navigator.of(context).push<CurrentDeviceLocation>(
+        MaterialPageRoute(
+          builder: (_) => ProjectLocationPickerScreen(
+            initialLatitude: _latitude,
+            initialLongitude: _longitude,
+          ),
+        ),
+      );
+      if (!mounted || location == null) return;
       _settingDeviceLocation = true;
       _locationController.text = location.address;
       _latitude = location.latitude;
       _longitude = location.longitude;
       _settingDeviceLocation = false;
       setState(() {});
-    } on CurrentLocationException catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text(error.message)));
     } finally {
       if (mounted) setState(() => _gettingLocation = false);
     }
-  }
-
-  Future<void> _chooseLocationOnMap() async {
-    if (_gettingLocation || _saving) return;
-    final location = await Navigator.of(context).push<CurrentDeviceLocation>(
-      MaterialPageRoute(
-        builder: (_) => ProjectLocationPickerScreen(
-          initialLatitude: _latitude,
-          initialLongitude: _longitude,
-        ),
-      ),
-    );
-    if (!mounted || location == null) return;
-    _settingDeviceLocation = true;
-    _locationController.text = location.address;
-    _latitude = location.latitude;
-    _longitude = location.longitude;
-    _settingDeviceLocation = false;
-    setState(() {});
   }
 
   Future<void> _pickPhoto() async {
@@ -133,32 +126,66 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
     }
   }
 
-  Future<void> _create() async {
+  Future<void> _save() async {
     if (!_canCreate || _saving) return;
     setState(() => _saving = true);
+    var detailsSaved = false;
 
     try {
-      await ProjectsStore.instance.create(
-        name: _nameController.text.trim(),
-        location: _locationController.text.trim(),
-        type: _type!,
-        latitude: _latitude,
-        longitude: _longitude,
-        photo: _photo,
-      );
+      final project = widget.project;
+      if (project == null) {
+        await ProjectsStore.instance.create(
+          name: _nameController.text.trim(),
+          location: _locationController.text.trim(),
+          type: _type!,
+          latitude: _latitude,
+          longitude: _longitude,
+          photo: _photo,
+        );
+      } else {
+        await ProjectsStore.instance.updateProject(
+          projectId: project.id,
+          name: _nameController.text.trim(),
+          location: _locationController.text.trim(),
+          type: _type!,
+          latitude: _latitude,
+          longitude: _longitude,
+        );
+        detailsSaved = true;
+        if (_photo != null) {
+          await ProjectsStore.instance.updatePhoto(
+            projectId: project.id,
+            photo: _photo!,
+          );
+        }
+      }
       if (!mounted) return;
       Navigator.of(context).pop();
     } on AuthApiException catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text(error.message)));
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              detailsSaved && _photo != null
+                  ? 'Project details saved, but the photo could not update: ${error.message}'
+                  : error.message,
+            ),
+          ),
+        );
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
-          const SnackBar(content: Text('Could not create project. Try again.')),
+          SnackBar(
+            content: Text(
+              widget.project == null
+                  ? 'Could not create project. Try again.'
+                  : 'Could not update project. Try again.',
+            ),
+          ),
         );
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -179,7 +206,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
           icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
         ),
         title: Text(
-          'Create Project',
+          widget.project == null ? 'Create Project' : 'Edit Project',
           style: AppTextStyles.cardTitle.copyWith(
             fontSize: 18,
             color: AppColors.textPrimary,
@@ -237,36 +264,47 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                   clipBehavior: Clip.antiAlias,
                   child: _photoBytes != null
                       ? Image.memory(_photoBytes!, fit: BoxFit.cover)
-                      : Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              _pickingPhoto
-                                  ? const SizedBox(
-                                      width: 24,
-                                      height: 24,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: AppColors.primary,
-                                      ),
-                                    )
-                                  : const Icon(
-                                      Icons.add_a_photo_outlined,
-                                      size: 30,
-                                      color: AppColors.secondary,
-                                    ),
-                              const SizedBox(height: 8),
-                              Text(
-                                _pickingPhoto
-                                    ? 'Opening photos...'
-                                    : 'Tap to add a project photo',
-                                style: AppTextStyles.bodySm.copyWith(
-                                  color: AppColors.onSurfaceVariant,
-                                ),
+                      : widget.project?.photoUrl != null
+                          ? Image.network(
+                              widget.project!.photoUrl!,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) =>
+                                  const Icon(
+                                Icons.broken_image_outlined,
+                                size: 30,
+                                color: AppColors.outline,
                               ),
-                            ],
-                          ),
-                        ),
+                            )
+                          : Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  _pickingPhoto
+                                      ? const SizedBox(
+                                          width: 24,
+                                          height: 24,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: AppColors.primary,
+                                          ),
+                                        )
+                                      : const Icon(
+                                          Icons.add_a_photo_outlined,
+                                          size: 30,
+                                          color: AppColors.secondary,
+                                        ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    _pickingPhoto
+                                        ? 'Opening photos...'
+                                        : 'Tap to add a project photo',
+                                    style: AppTextStyles.bodySm.copyWith(
+                                      color: AppColors.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                 ),
               ),
               if (_photo != null) ...[
@@ -289,33 +327,28 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                 label: 'Location',
                 icon: Icons.location_on_outlined,
                 controller: _locationController,
-                hintText: 'City, State',
+                hintText: 'Choose a location',
+                readOnly: true,
+                trailing: IconButton(
+                  tooltip: 'Choose project location',
+                  onPressed: _gettingLocation ? null : _chooseLocationOnMap,
+                  icon: _gettingLocation
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.map_outlined),
+                ),
               ),
               const SizedBox(height: 6),
-              Wrap(
-                spacing: 16,
-                children: [
-                  TextButton.icon(
-                    onPressed: _gettingLocation ? null : _useCurrentLocation,
-                    icon: _gettingLocation
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.my_location, size: 16),
-                    label: Text(
-                      _gettingLocation
-                          ? 'Getting location...'
-                          : 'Use current location',
-                    ),
-                  ),
-                  TextButton.icon(
-                    onPressed: _gettingLocation ? null : _chooseLocationOnMap,
-                    icon: const Icon(Icons.map_outlined, size: 16),
-                    label: const Text('Choose on map'),
-                  ),
-                ],
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: _gettingLocation ? null : _chooseLocationOnMap,
+                  icon: const Icon(Icons.map_outlined, size: 16),
+                  label: const Text('Search map or use current location'),
+                ),
               ),
               const SizedBox(height: 18),
               Text(
@@ -347,8 +380,12 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                 child: IgnorePointer(
                   ignoring: !_canCreate,
                   child: AuthButton(
-                    label: _saving ? 'Creating...' : 'Create Project',
-                    onPressed: _create,
+                    label: _saving
+                        ? (widget.project == null ? 'Creating...' : 'Saving...')
+                        : (widget.project == null
+                            ? 'Create Project'
+                            : 'Save Changes'),
+                    onPressed: _save,
                     backgroundColor: AppColors.primaryContainer,
                     pressedColor: AppColors.primary.withAlpha(90),
                     textStyle:
@@ -362,7 +399,11 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                               color: Colors.white,
                             ),
                           )
-                        : const Icon(Icons.add, size: 20, color: Colors.white),
+                        : Icon(
+                            widget.project == null ? Icons.add : Icons.check,
+                            size: 20,
+                            color: Colors.white,
+                          ),
                   ),
                 ),
               ),

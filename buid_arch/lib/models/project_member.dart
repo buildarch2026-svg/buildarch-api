@@ -3,12 +3,14 @@ class ProjectMember {
     required this.userId,
     required this.name,
     required this.role,
+    this.designation,
     this.joinedAt,
   });
 
   final int userId;
   final String name;
   final String role;
+  final String? designation;
   final DateTime? joinedAt;
 
   factory ProjectMember.fromJson(Map<String, dynamic> json) {
@@ -23,6 +25,8 @@ class ProjectMember {
       userId: userId.toInt(),
       name: name,
       role: role,
+      designation:
+          json['designation'] is String ? json['designation'] as String : null,
       joinedAt: DateTime.tryParse(json['joined_at']?.toString() ?? ''),
     );
   }

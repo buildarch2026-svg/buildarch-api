@@ -2,8 +2,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/app_role.dart';
 
-/// Stores the chosen role on the phone for now.
-/// TODO: save the role on the server (Laravel API) once login is connected.
+/// Stores the selected role locally as a fallback during profile setup.
 class UserRoleService {
   UserRoleService._();
   static final UserRoleService instance = UserRoleService._();

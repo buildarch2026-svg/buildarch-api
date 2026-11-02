@@ -17,4 +17,19 @@ void main() {
     expect(project.memberRole, 'contractor');
     expect(project.invitedByName, 'Project Owner');
   });
+
+  test('project reads archived and recoverable deleted state', () {
+    final project = Project.fromJson({
+      'id': 23,
+      'name': 'Archived home',
+      'location': 'Kochi, Kerala',
+      'type': 'renovation',
+      'is_owner': true,
+      'is_archived': true,
+      'is_deleted': true,
+    });
+
+    expect(project.isArchived, isTrue);
+    expect(project.isDeleted, isTrue);
+  });
 }

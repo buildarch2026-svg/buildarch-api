@@ -52,13 +52,13 @@ The most urgent confirmed client issue is that authenticated Flutter API calls c
 
 ## High-priority deployment/security findings
 
-### P1 — Android release defaults to an emulator URL and has no production-safe endpoint guard
+### Resolved — Android API endpoint configuration
 
-**Evidence:** `buid_arch/lib/services/auth_api_service.dart:29-31` defaults the API URL to `http://10.0.2.2:8000/api`. Cleartext traffic is enabled in the debug manifest (`buid_arch/android/app/src/debug/AndroidManifest.xml:2`), not the main manifest (`buid_arch/android/app/src/main/AndroidManifest.xml:1-10`).
+**Root cause:** The Flutter API service defaulted to `http://10.0.2.2:8000/api`, which only routes to the host from an Android emulator. A physical phone needs a reachable server address or an explicit tunnel. The phone launcher used USB ADB reverse forwarding, but launching the app outside that script did not configure the tunnel.
 
-**Impact:** A release build without an explicitly supplied URL targets an emulator-only development host. HTTP may also be blocked by Android's release cleartext policy. A developer's LAN address is not a stable or safe production endpoint.
+**Resolution:** All Laravel requests now use the validated `API_BASE_URL` setting. There is no fallback URL; release builds require HTTPS and reject loopback hosts. The phone launcher passes its loopback URL only after setting and verifying ADB reverse forwarding. API requests retain finite timeouts and report configuration, connection, and timeout failures.
 
-**Recommendation:** Require an HTTPS API URL for release builds and fail the build/startup clearly if a development or insecure URL is supplied. Keep emulator/USB-forwarded URLs confined to development configuration. Confirm TLS, DNS, reverse proxy, and certificate renewal on the cloud host.
+**Remaining deployment configuration:** Supply the publicly reachable HTTPS API URL through `--dart-define=API_BASE_URL=...` when producing a release. Configure and verify production TLS, DNS, and reverse-proxy settings on the hosting provider.
 
 ### P1 — Release package identity and signing are still debug placeholders
 

@@ -18,11 +18,25 @@ class CurrentDeviceLocation {
     required this.address,
     required this.latitude,
     required this.longitude,
+    this.placeName,
+    this.street,
+    this.locality,
+    this.city,
+    this.state,
+    this.postalCode,
+    this.country,
   });
 
   final String address;
   final double latitude;
   final double longitude;
+  final String? placeName;
+  final String? street;
+  final String? locality;
+  final String? city;
+  final String? state;
+  final String? postalCode;
+  final String? country;
 }
 
 class CurrentLocationService {
@@ -68,10 +82,18 @@ class CurrentLocationService {
         ),
       );
 
-      return await getLocationForCoordinates(
-        position.latitude,
-        position.longitude,
-      );
+      try {
+        return await getLocationForCoordinates(
+          position.latitude,
+          position.longitude,
+        );
+      } on CurrentLocationException {
+        return CurrentDeviceLocation(
+          address: _coordinates(position.latitude, position.longitude),
+          latitude: position.latitude,
+          longitude: position.longitude,
+        );
+      }
     } on TimeoutException {
       throw const CurrentLocationException(
         'Could not get your location in time. Check GPS reception and try '
@@ -105,10 +127,13 @@ class CurrentLocationService {
       );
       final placemark = placemarks.isEmpty ? null : placemarks.first;
       final parts = <String?>[
+        placemark?.name,
+        placemark?.thoroughfare,
         placemark?.subLocality,
         placemark?.locality,
         placemark?.subAdministrativeArea,
         placemark?.administrativeArea,
+        placemark?.postalCode,
         placemark?.country,
       ]
           .whereType<String>()
@@ -123,6 +148,13 @@ class CurrentLocationService {
             : parts.join(', '),
         latitude: latitude,
         longitude: longitude,
+        placeName: placemark?.name,
+        street: placemark?.thoroughfare,
+        locality: placemark?.subLocality,
+        city: placemark?.locality ?? placemark?.subAdministrativeArea,
+        state: placemark?.administrativeArea,
+        postalCode: placemark?.postalCode,
+        country: placemark?.country,
       );
     } on PlatformException {
       throw const CurrentLocationException(

@@ -35,6 +35,7 @@ class OtpScreen extends StatefulWidget {
 class _OtpScreenState extends State<OtpScreen> {
   static const _otpLength = 6;
   static const _resendSeconds = 60;
+  static const _otpRequestRateLimitSeconds = 600;
 
   final _rowKey = GlobalKey<OtpBoxRowState>();
 
@@ -58,8 +59,8 @@ class _OtpScreenState extends State<OtpScreen> {
     super.dispose();
   }
 
-  void _startTimer() {
-    _secondsLeft = _resendSeconds;
+  void _startTimer([int seconds = _resendSeconds]) {
+    _secondsLeft = seconds;
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (_secondsLeft <= 1) {
@@ -100,6 +101,14 @@ class _OtpScreenState extends State<OtpScreen> {
         _hasError = true;
         _errorMessage = error.message;
       });
+      if (error.statusCode == 429) {
+        final retryAfter = error.retryAfterSeconds;
+        _startTimer(
+          retryAfter != null && retryAfter > 0
+              ? retryAfter
+              : _otpRequestRateLimitSeconds,
+        );
+      }
     } finally {
       if (mounted) setState(() => _resending = false);
     }

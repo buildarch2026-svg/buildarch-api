@@ -22,8 +22,17 @@ class ProjectController extends Controller
                     ->where('status', 'accepted')
                     ->with('invitedBy:id,name'),
             ])
-            ->where('user_id', $user->id)
-            ->orWhereHas('members', fn ($query) => $query->where('user_id', $user->id))
+            ->where(function ($query) use ($user) {
+                $query->where('projects.user_id', $user->id)
+                    ->orWhere(function ($membership) use ($user) {
+                        $membership->whereNull('projects.deleted_at')
+                            ->whereNull('projects.archived_at')
+                            ->whereHas(
+                                'members',
+                                fn ($members) => $members->where('user_id', $user->id),
+                            );
+                    });
+            })
             ->latest('id')
             ->get()
             ->map(fn ($project) => $this->projectResponse($project, $request));
@@ -68,6 +77,75 @@ class ProjectController extends Controller
         ], 201);
     }
 
+    public function update(Request $request, Project $project): JsonResponse
+    {
+        abort_unless($project->user_id === $request->user()->id, 403);
+
+        $validated = $request->validate([
+            'name' => ['sometimes', 'required', 'string', 'max:255'],
+            'location' => ['sometimes', 'required', 'string', 'max:255'],
+            'latitude' => ['sometimes', 'nullable', 'required_with:longitude', 'numeric', 'between:-90,90'],
+            'longitude' => ['sometimes', 'nullable', 'required_with:latitude', 'numeric', 'between:-180,180'],
+            'type' => [
+                'sometimes',
+                'required',
+                Rule::in([
+                    'new_construction',
+                    'renovation',
+                    'interior_designing',
+                ]),
+            ],
+        ]);
+
+        $project->update($validated);
+
+        return response()->json([
+            'project' => $this->projectResponse($project->refresh(), $request),
+        ]);
+    }
+
+    public function archive(Request $request, Project $project): JsonResponse
+    {
+        abort_unless($project->user_id === $request->user()->id, 403);
+
+        if ($project->archived_at === null) {
+            $project->forceFill(['archived_at' => now()])->save();
+        }
+
+        return response()->json([
+            'project' => $this->projectResponse($project->refresh(), $request),
+        ]);
+    }
+
+    public function delete(Request $request, Project $project): JsonResponse
+    {
+        abort_unless($project->user_id === $request->user()->id, 403);
+
+        if (! $project->trashed()) {
+            $project->delete();
+        }
+
+        return response()->json([
+            'project' => $this->projectResponse($project->refresh(), $request),
+        ]);
+    }
+
+    public function restore(Request $request, Project $project): JsonResponse
+    {
+        abort_unless($project->user_id === $request->user()->id, 403);
+
+        if ($project->trashed()) {
+            $project->restore();
+        }
+        if ($project->archived_at !== null) {
+            $project->forceFill(['archived_at' => null])->save();
+        }
+
+        return response()->json([
+            'project' => $this->projectResponse($project->refresh(), $request),
+        ]);
+    }
+
     public function updatePhoto(Request $request, Project $project): JsonResponse
     {
         abort_unless($project->user_id === $request->user()->id, 403);
@@ -104,6 +182,8 @@ class ProjectController extends Controller
         return [
             ...$project->attributesToArray(),
             'is_owner' => $project->user_id === $request->user()->id,
+            'is_archived' => $project->archived_at !== null,
+            'is_deleted' => $project->trashed(),
             'member_role' => $membership?->role,
             'invited_by_name' => $acceptedInvitation?->invitedBy?->name,
             'photo_url' => $project->image_path

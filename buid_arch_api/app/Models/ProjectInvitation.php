@@ -11,6 +11,8 @@ class ProjectInvitation extends Model
         'project_id',
         'invited_by_user_id',
         'role',
+        'invitee_name',
+        'invitee_designation',
         'token_hash',
         'token_encrypted',
         'status',
@@ -29,6 +31,7 @@ class ProjectInvitation extends Model
             'accepted_at' => 'datetime',
             'declined_at' => 'datetime',
             'revoked_at' => 'datetime',
+            'removed_at' => 'datetime',
         ];
     }
 

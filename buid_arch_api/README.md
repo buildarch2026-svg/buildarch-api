@@ -83,7 +83,13 @@ project-membership and invitation tables. The migrations preserve existing
 users and projects. Project owners can create/list/revoke Contractor or
 Designer invitations; authenticated matching-role users can view, accept, or
 decline them. Invitation tokens are hashed for lookup and encrypted for owner
-QR re-display. Invitations expire after seven days.
+QR re-display. Invitations expire after seven days. The invitee name and
+designation are saved on the project membership when accepted, so a member can
+have different project-specific details in each team. Older memberships
+without those values fall back to the user's profile name and account role.
+The owner invitation list returns only pending invitations that have not
+expired. Accepted invitations are retained as history and marked removed when
+their member is removed from the project.
 
 The authenticated endpoints are `POST/GET /api/projects/{project}/invitations`,
 `POST /api/projects/{project}/invitations/{invitation}/revoke`,
@@ -150,5 +156,25 @@ Notifications are stored per recipient and include unread state; run
 `php artisan migrate --force` after deploying this feature. The Flutter app
 shows them from the notification bell on the Projects and Project Dashboard
 screens.
+
+## Project lifecycle and team access
+
+After deploying the project lifecycle API, run
+`php artisan migrate --path=database/migrations/2026_10_28_000005_add_project_lifecycle_state.php --force`
+to add the nullable archive and soft-delete timestamps. Existing projects are
+preserved. Project owners can update project name, location, coordinates, and
+type with `PATCH /api/projects/{project}`, archive with
+`POST /api/projects/{project}/archive`, and restore an archived or deleted
+project with `POST /api/projects/{project}/restore`. `DELETE
+/api/projects/{project}` is recoverable: it hides the project from members and
+marks it deleted without cascading into its files, messages, memberships, or
+transactions. Soft-deleted projects are excluded from `GET /api/projects`;
+the owner can restore a deleted project by ID later.
+
+Only the project owner can remove an accepted member with
+`DELETE /api/projects/{project}/members/{memberUserId}`. The removed user loses
+access to project APIs immediately; historical messages and transactions are
+retained for the project. Archived and deleted projects reject project-scoped
+requests and do not accept invitations until the owner restores them.
 
 The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).

@@ -12,7 +12,9 @@ return new class extends Migration
             $table->id();
             $table->foreignId('project_id')->constrained()->cascadeOnDelete();
             $table->foreignId('invited_by_user_id')->constrained('users')->cascadeOnDelete();
-            $table->string('role');
+            $table->string('role')->nullable();
+            $table->string('invitee_name');
+            $table->string('invitee_designation');
             $table->string('token_hash', 64)->unique();
             $table->text('token_encrypted');
             $table->string('status')->default('pending');

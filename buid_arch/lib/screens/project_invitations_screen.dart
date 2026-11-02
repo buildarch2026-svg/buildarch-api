@@ -39,7 +39,8 @@ class _ProjectInvitationsScreenState extends State<ProjectInvitationsScreen> {
     final token = await AuthSessionService.instance.readToken();
     if (token == null || token.isEmpty) {
       throw const AuthApiException(
-          'Your session expired. Please sign in again.');
+        'Your session expired. Please sign in again.',
+      );
     }
     return token;
   }
@@ -66,7 +67,64 @@ class _ProjectInvitationsScreenState extends State<ProjectInvitationsScreen> {
     }
   }
 
-  Future<void> _createInvitation(String role) async {
+  Future<void> _promptCreateInvitation() async {
+    final nameController = TextEditingController();
+    final designationController = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Create general invitation'),
+        content: SizedBox(
+          width: 420,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Invitee name',
+                  hintText: 'Rahul Menon',
+                ),
+                textInputAction: TextInputAction.next,
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: designationController,
+                decoration: const InputDecoration(
+                  labelText: 'Invitee designation',
+                  hintText: 'Site Engineer',
+                ),
+                textInputAction: TextInputAction.done,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Generate link'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    final inviteeName = nameController.text.trim();
+    final inviteeDesignation = designationController.text.trim();
+    if (inviteeName.isEmpty || inviteeDesignation.isEmpty) {
+      _showMessage('Invitee name and designation are required.');
+      return;
+    }
+
+    await _createInvitation(inviteeName, inviteeDesignation);
+  }
+
+  Future<void> _createInvitation(String inviteeName, String inviteeDesignation) async {
     if (_creating) return;
     setState(() => _creating = true);
     try {
@@ -74,7 +132,8 @@ class _ProjectInvitationsScreenState extends State<ProjectInvitationsScreen> {
       final invitation = await AuthApiService.instance.createProjectInvitation(
         token: token,
         projectId: widget.project.id,
-        role: role,
+        inviteeName: inviteeName,
+        inviteeDesignation: inviteeDesignation,
       );
       if (!mounted) return;
       setState(() => _invitations = [invitation, ..._invitations]);
@@ -115,7 +174,7 @@ class _ProjectInvitationsScreenState extends State<ProjectInvitationsScreen> {
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Invite ${_roleName(invitation.role)}'),
+        title: Text(invitation.inviteeName ?? 'Project invitation'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -132,8 +191,9 @@ class _ProjectInvitationsScreenState extends State<ProjectInvitationsScreen> {
             ),
             const SizedBox(height: 12),
             Text(
-              'Scan this code with Build Arch. The invite expires '
-              '${_date(invitation.expiresAt)}.',
+              '${invitation.inviteeName ?? 'Invitee'} • '
+              '${invitation.inviteeDesignation ?? 'General invite'}\n'
+              'The invite expires ${_date(invitation.expiresAt)}.',
               textAlign: TextAlign.center,
             ),
           ],
@@ -214,8 +274,8 @@ class _ProjectInvitationsScreenState extends State<ProjectInvitationsScreen> {
             ),
           ],
           fileNameOverrides: [fileName],
-          text: 'Join ${widget.project.name} as '
-              '${_roleName(invitation.role)}: $link',
+          text: 'Join ${widget.project.name}: ${invitation.inviteeName ?? 'Project invite'} '
+              '(${invitation.inviteeDesignation ?? 'General invite'})\n$link',
           subject: 'Project invitation',
         ),
       );
@@ -255,9 +315,6 @@ class _ProjectInvitationsScreenState extends State<ProjectInvitationsScreen> {
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
   }
-
-  String _roleName(String role) =>
-      role == 'contractor' ? 'Contractor' : 'Designer';
 
   String _date(DateTime date) => '${date.day.toString().padLeft(2, '0')}/'
       '${date.month.toString().padLeft(2, '0')}/${date.year}';
@@ -305,27 +362,10 @@ class _ProjectInvitationsScreenState extends State<ProjectInvitationsScreen> {
               ],
             ),
             const SizedBox(height: 18),
-            Row(
-              children: [
-                Expanded(
-                  child: _roleAction(
-                    icon: Icons.engineering_outlined,
-                    label: 'Contractor',
-                    onPressed: _creating
-                        ? null
-                        : () => _createInvitation('contractor'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _roleAction(
-                    icon: Icons.design_services_outlined,
-                    label: 'Designer',
-                    onPressed:
-                        _creating ? null : () => _createInvitation('designer'),
-                  ),
-                ),
-              ],
+            FilledButton.icon(
+              onPressed: _creating ? null : _promptCreateInvitation,
+              icon: const Icon(Icons.person_add_alt_1_rounded),
+              label: const Text('Create general invitation'),
             ),
             if (_creating) ...[
               const SizedBox(height: 12),
@@ -370,30 +410,6 @@ class _ProjectInvitationsScreenState extends State<ProjectInvitationsScreen> {
     );
   }
 
-  Widget _roleAction({
-    required IconData icon,
-    required String label,
-    required VoidCallback? onPressed,
-  }) {
-    return FilledButton.tonal(
-      onPressed: onPressed,
-      style: FilledButton.styleFrom(
-        backgroundColor: AppColors.surfaceContainerLow,
-        foregroundColor: AppColors.primary,
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 25),
-          const SizedBox(height: 7),
-          Text(label),
-        ],
-      ),
-    );
-  }
-
   Widget _errorPanel() {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 24),
@@ -408,9 +424,8 @@ class _ProjectInvitationsScreenState extends State<ProjectInvitationsScreen> {
 
   Widget _invitationCard(ProjectInvitation invitation) {
     final pending = invitation.status == 'pending';
-    final roleIcon = invitation.role == 'contractor'
-        ? Icons.engineering_outlined
-        : Icons.design_services_outlined;
+    final inviteeName = invitation.inviteeName ?? 'Project invite';
+    final inviteeDesignation = invitation.inviteeDesignation ?? 'General invite';
     return Card(
       color: AppColors.surfaceContainerLow,
       margin: const EdgeInsets.only(bottom: 10),
@@ -423,13 +438,13 @@ class _ProjectInvitationsScreenState extends State<ProjectInvitationsScreen> {
             color: AppColors.surfaceContainer,
             shape: BoxShape.circle,
           ),
-          child: Icon(roleIcon, color: AppColors.secondary, size: 22),
+          child: const Icon(Icons.person_add_alt_1_rounded, color: AppColors.secondary, size: 22),
         ),
         title: Row(
           children: [
             Expanded(
               child: Text(
-                _roleName(invitation.role),
+                inviteeName,
                 style: AppTextStyles.bodyMd.copyWith(
                   fontWeight: FontWeight.w700,
                   color: AppColors.textPrimary,
@@ -442,19 +457,31 @@ class _ProjectInvitationsScreenState extends State<ProjectInvitationsScreen> {
         ),
         subtitle: Padding(
           padding: const EdgeInsets.only(top: 5),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(
-                Icons.schedule_rounded,
-                size: 14,
-                color: AppColors.outline,
-              ),
-              const SizedBox(width: 5),
               Text(
-                'Expires ${_date(invitation.expiresAt)}',
+                inviteeDesignation,
                 style: AppTextStyles.bodySm.copyWith(
                   color: AppColors.onSurfaceVariant,
                 ),
+              ),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  const Icon(
+                    Icons.schedule_rounded,
+                    size: 14,
+                    color: AppColors.outline,
+                  ),
+                  const SizedBox(width: 5),
+                  Text(
+                    'Expires ${_date(invitation.expiresAt)}',
+                    style: AppTextStyles.bodySm.copyWith(
+                      color: AppColors.onSurfaceVariant,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),

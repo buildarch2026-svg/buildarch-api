@@ -18,15 +18,21 @@ class ProjectInvitationController extends Controller
     {
         abort_unless($project->user_id === $request->user()->id, 403);
 
+        $project->invitations()
+            ->where('status', 'pending')
+            ->where('expires_at', '<=', now())
+            ->update([
+                'status' => 'expired',
+                'updated_at' => now(),
+            ]);
+
         $invitations = $project->invitations()
+            ->where('status', 'pending')
+            ->where('expires_at', '>', now())
             ->with(['invitedBy:id,name', 'acceptedBy:id,name'])
             ->latest('id')
             ->get()
-            ->map(function (ProjectInvitation $invitation) {
-                $invitation->refreshExpirationStatus();
-
-                return $this->ownerInvitationResponse($invitation);
-            });
+            ->map(fn (ProjectInvitation $invitation) => $this->ownerInvitationResponse($invitation));
 
         return response()->json(['invitations' => $invitations]);
     }
@@ -36,13 +42,26 @@ class ProjectInvitationController extends Controller
         abort_unless($project->user_id === $request->user()->id, 403);
 
         $validated = $request->validate([
-            'role' => ['required', Rule::in(['contractor', 'designer'])],
+            'invitee_name' => ['required', 'string', 'max:255'],
+            'invitee_designation' => ['required', 'string', 'max:255'],
+            'role' => ['nullable', Rule::in(['general', 'contractor', 'designer'])],
         ]);
+
+        $inviteeName = trim((string) $validated['invitee_name']);
+        $inviteeDesignation = trim((string) $validated['invitee_designation']);
+
+        if ($inviteeName === '' || $inviteeDesignation === '') {
+            return response()->json([
+                'message' => 'Invitee name and designation are required.',
+            ], 422);
+        }
 
         $token = bin2hex(random_bytes(32));
         $invitation = $project->invitations()->create([
             'invited_by_user_id' => $request->user()->id,
-            'role' => $validated['role'],
+            'role' => $validated['role'] ?? 'general',
+            'invitee_name' => $inviteeName,
+            'invitee_designation' => $inviteeDesignation,
             'token_hash' => hash('sha256', $token),
             'token_encrypted' => Crypt::encryptString($token),
             'status' => 'pending',
@@ -98,23 +117,32 @@ class ProjectInvitationController extends Controller
     public function show(Request $request, string $token): JsonResponse
     {
         $invitation = $this->findByToken($token);
+        $project = Project::withTrashed()->find($invitation->project_id);
+        if (! $project || $project->trashed() || $project->archived_at !== null) {
+            return response()->json([
+                'message' => 'This project is not accepting invitations.',
+            ], 410);
+        }
+        $invitation->setRelation('project', $project);
         $invitation->load(['project.user:id,name', 'invitedBy:id,name']);
         $invitation->refreshExpirationStatus();
 
         $user = $request->user();
         $canAccept = $invitation->status === 'pending'
+            && $user !== null
             && $user->id !== $invitation->invited_by_user_id
-            && $user->role === $invitation->role
             && ! $invitation->project->members()->where('user_id', $user->id)->exists();
 
         return response()->json([
             'invitation' => [
                 'id' => $invitation->id,
-                'role' => $invitation->role,
+                'role' => $invitation->role ?? 'general',
+                'invitee_name' => $invitation->invitee_name,
+                'invitee_designation' => $invitation->invitee_designation,
                 'status' => $invitation->status,
                 'created_at' => $invitation->created_at->toIso8601String(),
                 'expires_at' => $invitation->expires_at->toIso8601String(),
-                'inviter_name' => $invitation->invitedBy->name,
+                'inviter_name' => $invitation->invitedBy?->name,
                 'can_accept' => $canAccept,
                 'project' => [
                     'id' => $invitation->project->id,
@@ -140,10 +168,18 @@ class ProjectInvitationController extends Controller
         $result = DB::transaction(function () use ($request, $token): array {
             $invitation = $this->findByToken($token, lockForUpdate: true);
             $project = Project::query()
+                ->withTrashed()
                 ->whereKey($invitation->project_id)
                 ->lockForUpdate()
                 ->firstOrFail();
             $invitation->refreshExpirationStatus();
+
+            if ($project->trashed() || $project->archived_at !== null) {
+                return [
+                    'error' => 'This project is not accepting invitations.',
+                    'code' => 410,
+                ];
+            }
 
             if ($invitation->status !== 'pending') {
                 return [
@@ -153,10 +189,16 @@ class ProjectInvitationController extends Controller
             }
 
             $user = $request->user();
-            if ($user->id === $invitation->invited_by_user_id
-                || $user->role !== $invitation->role) {
+            if (! $user) {
                 return [
-                    'error' => 'Sign in with an account matching the invited role.',
+                    'error' => 'Authentication required.',
+                    'code' => 401,
+                ];
+            }
+
+            if ($user->id === $invitation->invited_by_user_id) {
+                return [
+                    'error' => 'The project owner cannot accept their own invitation.',
                     'code' => 403,
                 ];
             }
@@ -171,7 +213,9 @@ class ProjectInvitationController extends Controller
             ProjectMember::create([
                 'project_id' => $project->id,
                 'user_id' => $user->id,
-                'role' => $invitation->role,
+                'role' => $user->role ?? 'homeOwner',
+                'display_name' => $invitation->invitee_name,
+                'designation' => $invitation->invitee_designation,
             ]);
             $invitation->update([
                 'status' => 'accepted',
@@ -181,7 +225,9 @@ class ProjectInvitationController extends Controller
 
             return [
                 'project_id' => $project->id,
-                'role' => $invitation->role,
+                'role' => $user->role ?? 'homeOwner',
+                'invitee_name' => $invitation->invitee_name,
+                'invitee_designation' => $invitation->invitee_designation,
             ];
         });
 
@@ -195,6 +241,8 @@ class ProjectInvitationController extends Controller
             'accepted' => true,
             'project_id' => $result['project_id'],
             'role' => $result['role'],
+            'invitee_name' => $result['invitee_name'],
+            'invitee_designation' => $result['invitee_designation'],
         ]);
     }
 
@@ -212,10 +260,16 @@ class ProjectInvitationController extends Controller
             }
 
             $user = $request->user();
-            if ($user->id === $invitation->invited_by_user_id
-                || $user->role !== $invitation->role) {
+            if (! $user) {
                 return [
-                    'error' => 'Sign in with an account matching the invited role.',
+                    'error' => 'Authentication required.',
+                    'code' => 401,
+                ];
+            }
+
+            if ($user->id === $invitation->invited_by_user_id) {
+                return [
+                    'error' => 'The project owner cannot decline their own invitation.',
                     'code' => 403,
                 ];
             }
@@ -258,7 +312,9 @@ class ProjectInvitationController extends Controller
     {
         return [
             'id' => $invitation->id,
-            'role' => $invitation->role,
+            'role' => $invitation->role ?? 'general',
+            'invitee_name' => $invitation->invitee_name,
+            'invitee_designation' => $invitation->invitee_designation,
             'status' => $invitation->status,
             'token' => Crypt::decryptString($invitation->token_encrypted),
             'created_at' => $invitation->created_at->toIso8601String(),

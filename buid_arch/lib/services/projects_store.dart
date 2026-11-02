@@ -44,7 +44,7 @@ class ProjectsStore extends ChangeNotifier {
       }
       final projects = await AuthApiService.instance.getProjects(token: token);
       if (accountGeneration != _accountGeneration) return;
-      _projects = projects;
+      _projects = projects.where((project) => !project.isDeleted).toList();
       _loaded = true;
     } on AuthApiException catch (error) {
       if (accountGeneration != _accountGeneration) return;
@@ -117,6 +117,113 @@ class ProjectsStore extends ChangeNotifier {
       notifyListeners();
     }
     return project;
+  }
+
+  Future<Project> updateProject({
+    required String projectId,
+    required String name,
+    required String location,
+    required ProjectType type,
+    double? latitude,
+    double? longitude,
+  }) async {
+    final accountGeneration = _accountGeneration;
+    final token = await AuthSessionService.instance.readToken();
+    if (token == null || token.isEmpty) {
+      throw const AuthApiException(
+        'Your session expired. Please sign in again.',
+      );
+    }
+
+    final project = await AuthApiService.instance.updateProject(
+      token: token,
+      projectId: projectId,
+      name: name,
+      location: location,
+      type: type,
+      latitude: latitude,
+      longitude: longitude,
+    );
+    if (accountGeneration != _accountGeneration) return project;
+    _replaceProject(project);
+    return project;
+  }
+
+  Future<void> archiveProject(String projectId) async {
+    await _runProjectAction(
+      projectId,
+      AuthApiService.instance.archiveProject,
+    );
+  }
+
+  Future<void> deleteProject(String projectId) async {
+    await _runProjectAction(
+      projectId,
+      AuthApiService.instance.deleteProject,
+    );
+  }
+
+  Future<void> restoreProject(String projectId) async {
+    await _runProjectAction(
+      projectId,
+      AuthApiService.instance.restoreProject,
+    );
+  }
+
+  Future<void> _runProjectAction(
+    String projectId,
+    Future<Project> Function({
+      required String token,
+      required String projectId,
+    }) action,
+  ) async {
+    final accountGeneration = _accountGeneration;
+    final token = await AuthSessionService.instance.readToken();
+    if (token == null || token.isEmpty) {
+      throw const AuthApiException(
+        'Your session expired. Please sign in again.',
+      );
+    }
+
+    final project = await action(token: token, projectId: projectId);
+    if (accountGeneration == _accountGeneration) _replaceProject(project);
+  }
+
+  void _replaceProject(Project project) {
+    if (project.isDeleted) {
+      _projects.removeWhere((item) => item.id == project.id);
+      _loaded = true;
+      _errorMessage = null;
+      notifyListeners();
+      return;
+    }
+
+    final projectIndex = _projects.indexWhere((item) => item.id == project.id);
+    if (projectIndex == -1) {
+      _projects = [project, ..._projects];
+    } else {
+      _projects[projectIndex] = project;
+    }
+    _loaded = true;
+    _errorMessage = null;
+    notifyListeners();
+  }
+
+  Future<void> removeProjectMember({
+    required String projectId,
+    required int memberUserId,
+  }) async {
+    final token = await AuthSessionService.instance.readToken();
+    if (token == null || token.isEmpty) {
+      throw const AuthApiException(
+        'Your session expired. Please sign in again.',
+      );
+    }
+    await AuthApiService.instance.removeProjectMember(
+      token: token,
+      projectId: projectId,
+      memberUserId: memberUserId,
+    );
   }
 
   void clear() {

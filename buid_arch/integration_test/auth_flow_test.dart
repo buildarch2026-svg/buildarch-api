@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:buid_arch/screens/mobile_number_screen.dart';
 import 'package:buid_arch/services/auth_api_service.dart';
+import 'package:buid_arch/services/api_configuration.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -12,7 +13,12 @@ void main() {
 
   testWidgets('mobile sign-in shows the OTP API rejection', (tester) async {
     final client = _AuthFlowClient();
-    final authApiService = AuthApiService(client: client);
+    final authApiService = AuthApiService(
+      client: client,
+      configuration: ApiConfiguration(
+        baseUrl: 'http://127.0.0.1:8000/api',
+      ),
+    );
     await tester.pumpWidget(
       MaterialApp(
         home: MobileNumberScreen(authApiService: authApiService),

@@ -16,10 +16,16 @@ class ProjectLocationPickerScreen extends StatefulWidget {
     super.key,
     this.initialLatitude,
     this.initialLongitude,
+    this.title = 'Choose Project Location',
+    this.confirmLabel = 'Confirm Location',
+    this.consumeSharedLocation = true,
   });
 
   final double? initialLatitude;
   final double? initialLongitude;
+  final String title;
+  final String confirmLabel;
+  final bool consumeSharedLocation;
 
   @override
   State<ProjectLocationPickerScreen> createState() =>
@@ -33,11 +39,19 @@ class _ProjectLocationPickerScreenState
   late final MapController _mapController;
   final _searchController = TextEditingController();
   LatLng? _selectedPoint;
-  String? _selectedAddress;
+  CurrentDeviceLocation? _selectedLocation;
   List<LocationSearchResult> _searchResults = [];
   String? _searchError;
   bool _searching = false;
   bool _resolvingAddress = false;
+  bool _lookingUpAddress = false;
+  bool _locating = false;
+  bool _settingSearchText = false;
+  String? _addressLookupError;
+  bool _hasHandledSharedLocation = false;
+  Timer? _searchDebounce;
+  Timer? _addressDebounce;
+  int _searchGeneration = 0;
   StreamSubscription<String>? _sharedTextSubscription;
 
   LatLng get _initialCenter {
@@ -53,16 +67,28 @@ class _ProjectLocationPickerScreenState
   void initState() {
     super.initState();
     _mapController = MapController();
-    _sharedTextSubscription = SharedLocationService.instance.sharedTexts.listen(
-      (_) => unawaited(_consumeInitialSharedText()),
-    );
-    unawaited(_consumeInitialSharedText());
+    if (widget.initialLatitude != null && widget.initialLongitude != null) {
+      _selectedPoint = _initialCenter;
+      _scheduleAddressLookup(_initialCenter);
+    }
+    if (widget.consumeSharedLocation) {
+      _sharedTextSubscription =
+          SharedLocationService.instance.sharedTexts.listen(
+        (_) => unawaited(_consumeInitialSharedText()),
+      );
+      unawaited(_consumeInitialSharedText());
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_useCurrentLocation(initial: true));
+    });
   }
 
   @override
   void dispose() {
     _mapController.dispose();
     _searchController.dispose();
+    _searchDebounce?.cancel();
+    _addressDebounce?.cancel();
     _sharedTextSubscription?.cancel();
     super.dispose();
   }
@@ -89,12 +115,8 @@ class _ProjectLocationPickerScreenState
       }
 
       final point = LatLng(location.latitude, location.longitude);
-      setState(() {
-        _selectedPoint = point;
-        _selectedAddress = null;
-        _searchResults = [];
-        _searchError = null;
-      });
+      _hasHandledSharedLocation = true;
+      _selectPoint(point);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _mapController.move(point, 18);
       });
@@ -112,18 +134,22 @@ class _ProjectLocationPickerScreenState
   }
 
   Future<void> _searchLocations() async {
-    if (_searching) return;
+    _searchDebounce?.cancel();
+    final query = _searchController.text.trim();
+    if (query.length < 3) return;
+    final generation = ++_searchGeneration;
     setState(() {
       _searching = true;
       _searchError = null;
-      _searchResults = [];
     });
 
     try {
-      final results = await LocationSearchService.instance.search(
-        _searchController.text,
-      );
-      if (!mounted) return;
+      final results = await LocationSearchService.instance.search(query);
+      if (!mounted ||
+          generation != _searchGeneration ||
+          _searchController.text.trim() != query) {
+        return;
+      }
       setState(() {
         _searchResults = results;
         if (results.isEmpty) {
@@ -131,31 +157,138 @@ class _ProjectLocationPickerScreenState
         }
       });
     } on LocationSearchException catch (error) {
-      if (mounted) setState(() => _searchError = error.message);
+      if (mounted && generation == _searchGeneration) {
+        setState(() => _searchError = error.message);
+      }
     } finally {
-      if (mounted) setState(() => _searching = false);
+      if (mounted && generation == _searchGeneration) {
+        setState(() => _searching = false);
+      }
     }
   }
 
-  void _selectSearchResult(LocationSearchResult result) {
-    final point = LatLng(result.latitude, result.longitude);
-    setState(() {
-      _selectedPoint = point;
-      _selectedAddress = result.name;
-      _searchResults = [];
-      _searchError = null;
-    });
-    _mapController.move(point, 16);
+  void _onSearchChanged(String value) {
+    if (_settingSearchText) return;
+    _searchDebounce?.cancel();
+    _searchGeneration++;
+    final query = value.trim();
+    if (query.length < 3) {
+      setState(() {
+        _searching = false;
+        _searchResults = [];
+        _searchError = null;
+      });
+      return;
+    }
+    _searchDebounce = Timer(
+      const Duration(milliseconds: 550),
+      _searchLocations,
+    );
   }
 
-  void _useMapCenter() {
-    final point = _mapController.camera.center;
+  void _selectSearchResult(LocationSearchResult result) {
+    FocusScope.of(context).unfocus();
+    final point = LatLng(result.latitude, result.longitude);
+    _settingSearchText = true;
+    _searchController.text = result.name;
+    _settingSearchText = false;
+    final location = CurrentDeviceLocation(
+      address: result.name,
+      latitude: result.latitude,
+      longitude: result.longitude,
+      placeName: result.placeName,
+      street: result.street,
+      locality: result.locality,
+      city: result.city,
+      state: result.state,
+      postalCode: result.postalCode,
+      country: result.country,
+    );
+    _selectPoint(point, location: location, zoom: 16);
+  }
+
+  void _selectPoint(
+    LatLng point, {
+    CurrentDeviceLocation? location,
+    double? zoom,
+  }) {
     setState(() {
       _selectedPoint = point;
-      _selectedAddress = null;
+      _selectedLocation = location;
+      _lookingUpAddress = false;
+      _addressLookupError = null;
       _searchResults = [];
       _searchError = null;
+      _searching = false;
     });
+    _addressDebounce?.cancel();
+    if (location == null) _scheduleAddressLookup(point);
+    if (zoom != null) _mapController.move(point, zoom);
+  }
+
+  void _onMapPositionChanged(MapCamera camera, bool hasGesture) {
+    if (!hasGesture) return;
+    final point = camera.center;
+    if (_selectedPoint == point) return;
+    _selectPoint(point);
+  }
+
+  void _scheduleAddressLookup(LatLng point) {
+    _addressDebounce?.cancel();
+    _addressDebounce = Timer(
+      const Duration(milliseconds: 500),
+      () => _lookupAddress(point),
+    );
+  }
+
+  Future<void> _lookupAddress(LatLng point) async {
+    setState(() => _lookingUpAddress = true);
+    try {
+      final location =
+          await CurrentLocationService.instance.getLocationForCoordinates(
+        point.latitude,
+        point.longitude,
+      );
+      if (!mounted || _selectedPoint != point) return;
+      setState(() {
+        _selectedLocation = location;
+        _addressLookupError = null;
+      });
+    } on CurrentLocationException catch (error) {
+      if (mounted && _selectedPoint == point) {
+        setState(() {
+          _selectedLocation = null;
+          _addressLookupError = error.message;
+        });
+      }
+    } finally {
+      if (mounted && _selectedPoint == point) {
+        setState(() => _lookingUpAddress = false);
+      }
+    }
+  }
+
+  Future<void> _useCurrentLocation({bool initial = false}) async {
+    if (_locating || (initial && _hasHandledSharedLocation)) return;
+    setState(() => _locating = true);
+    try {
+      final location =
+          await CurrentLocationService.instance.getCurrentLocation();
+      if (!mounted || (initial && _hasHandledSharedLocation)) return;
+      _selectPoint(
+        LatLng(location.latitude, location.longitude),
+        location: _locationHasAddress(location) ? location : null,
+        zoom: 16,
+      );
+    } on CurrentLocationException catch (error) {
+      if (initial) {
+        _showMessage('Could not find your current location. $error');
+      } else {
+        _showMessage(error.message);
+      }
+    } finally {
+      if (mounted) setState(() => _locating = false);
+    }
   }
 
   Future<void> _confirmLocation() async {
@@ -164,17 +297,7 @@ class _ProjectLocationPickerScreenState
 
     setState(() => _resolvingAddress = true);
     try {
-      final searchedAddress = _selectedAddress;
-      final location = searchedAddress == null
-          ? await CurrentLocationService.instance.getLocationForCoordinates(
-              point.latitude,
-              point.longitude,
-            )
-          : CurrentDeviceLocation(
-              address: searchedAddress,
-              latitude: point.latitude,
-              longitude: point.longitude,
-            );
+      final location = _selectedLocation ?? await _locationOrCoordinates(point);
       if (mounted) Navigator.of(context).pop(location);
     } on CurrentLocationException catch (error) {
       if (!mounted) return;
@@ -186,6 +309,25 @@ class _ProjectLocationPickerScreenState
     }
   }
 
+  bool _locationHasAddress(CurrentDeviceLocation location) =>
+      !location.address.startsWith('Coordinates:');
+
+  Future<CurrentDeviceLocation> _locationOrCoordinates(LatLng point) async {
+    try {
+      return await CurrentLocationService.instance.getLocationForCoordinates(
+        point.latitude,
+        point.longitude,
+      );
+    } on CurrentLocationException {
+      return CurrentDeviceLocation(
+        address: 'Coordinates: ${point.latitude.toStringAsFixed(5)}, '
+            '${point.longitude.toStringAsFixed(5)}',
+        latitude: point.latitude,
+        longitude: point.longitude,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -193,7 +335,7 @@ class _ProjectLocationPickerScreenState
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.white,
         title: Text(
-          'Choose Project Location',
+          widget.title,
           style: AppTextStyles.cardTitle.copyWith(
             fontSize: 18,
             color: AppColors.textPrimary,
@@ -221,9 +363,10 @@ class _ProjectLocationPickerScreenState
                       child: TextField(
                         controller: _searchController,
                         textInputAction: TextInputAction.search,
+                        onChanged: _onSearchChanged,
                         onSubmitted: (_) => _searchLocations(),
                         decoration: InputDecoration(
-                          hintText: 'Search city, area, or address',
+                          hintText: 'Search address, place, landmark, or area',
                           prefixIcon: const Icon(Icons.search),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(10),
@@ -298,44 +441,50 @@ class _ProjectLocationPickerScreenState
                 initialZoom: widget.initialLatitude == null ? 5 : 15,
                 minZoom: 3,
                 maxZoom: 19,
-                onTap: (_, point) => setState(() {
-                  _selectedPoint = point;
-                  _selectedAddress = null;
-                }),
+                onPositionChanged: _onMapPositionChanged,
+                onTap: (_, point) => _selectPoint(
+                  point,
+                  zoom: _mapController.camera.zoom,
+                ),
               ),
               children: [
                 TileLayer(
                   urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                   userAgentPackageName: 'com.example.buid_arch',
                 ),
-                if (_selectedPoint case final point?)
-                  MarkerLayer(
-                    markers: [
-                      Marker(
-                        point: point,
-                        width: 48,
-                        height: 48,
-                        child: const Icon(
-                          Icons.location_pin,
-                          size: 46,
-                          color: AppColors.error,
-                        ),
-                      ),
-                    ],
-                  )
-                else
-                  const IgnorePointer(
-                    child: Center(
+                const IgnorePointer(
+                  child: Center(
+                    child: Padding(
+                      padding: EdgeInsets.only(bottom: 42),
                       child: Icon(
-                        Icons.add_location_alt,
-                        size: 44,
-                        color: AppColors.secondary,
+                        Icons.location_pin,
+                        size: 48,
+                        color: AppColors.error,
                         shadows: [
                           Shadow(color: Colors.white, blurRadius: 8),
                         ],
                       ),
                     ),
                   ),
+                ),
+                Positioned(
+                  right: 16,
+                  bottom: 24,
+                  child: FloatingActionButton(
+                    heroTag: 'location-picker-current-location',
+                    tooltip: 'Use current location',
+                    onPressed: _locating ? null : _useCurrentLocation,
+                    backgroundColor: Colors.white,
+                    foregroundColor: AppColors.secondary,
+                    child: _locating
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.my_location),
+                  ),
+                ),
                 const RichAttributionWidget(
                   attributions: [
                     TextSourceAttribution('OpenStreetMap contributors'),
@@ -351,37 +500,27 @@ class _ProjectLocationPickerScreenState
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (_selectedPoint != null)
+                  if (_selectedPoint == null)
                     Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
+                      padding: const EdgeInsets.only(bottom: 12),
                       child: Text(
-                        _selectedAddress ??
-                            'Pin selected — adjust it on the map',
+                        'Move the map to place the pin, or search for a place.',
                         style: AppTextStyles.bodySm.copyWith(
                           color: AppColors.onSurfaceVariant,
                         ),
                         textAlign: TextAlign.center,
                       ),
-                    ),
-                  Wrap(
-                    alignment: WrapAlignment.center,
-                    spacing: 8,
-                    children: [
-                      TextButton.icon(
-                        onPressed: _useMapCenter,
-                        icon: const Icon(Icons.add_location_alt, size: 18),
-                        label: const Text('Set pin here'),
-                      ),
-                    ],
-                  ),
+                    )
+                  else
+                    _selectedAddressPanel(),
                   Opacity(
                     opacity: _selectedPoint == null ? 0.4 : 1,
                     child: IgnorePointer(
                       ignoring: _selectedPoint == null || _resolvingAddress,
                       child: AuthButton(
                         label: _resolvingAddress
-                            ? 'Finding address...'
-                            : 'Save project location',
+                            ? 'Confirming location...'
+                            : widget.confirmLabel,
                         onPressed: _confirmLocation,
                         backgroundColor: AppColors.primaryContainer,
                         pressedColor: AppColors.primary.withAlpha(90),
@@ -408,6 +547,105 @@ class _ProjectLocationPickerScreenState
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _selectedAddressPanel() {
+    final location = _selectedLocation;
+    final title = location?.placeName ??
+        location?.street ??
+        location?.city ??
+        (location?.address.startsWith('Coordinates:') == true
+            ? 'Selected location'
+            : location?.address);
+    final details = <(String, String?)>[
+      ('Street', location?.street),
+      ('Locality', location?.locality),
+      ('City', location?.city),
+      ('State', location?.state),
+      ('Postal code', location?.postalCode),
+      ('Country', location?.country),
+    ].where((item) => item.$2?.trim().isNotEmpty == true).toList();
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.location_on_outlined,
+                color: AppColors.secondary,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  _lookingUpAddress
+                      ? 'Finding address...'
+                      : title ?? 'Selected location',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.titleMd.copyWith(
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+              if (_lookingUpAddress)
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+            ],
+          ),
+          if (location != null &&
+              location.address != title &&
+              !location.address.startsWith('Coordinates:')) ...[
+            const SizedBox(height: 4),
+            Text(
+              location.address,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: AppTextStyles.bodySm.copyWith(
+                color: AppColors.onSurfaceVariant,
+              ),
+            ),
+          ],
+          if (_addressLookupError != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Address details unavailable. You can still confirm this pin.',
+              style: AppTextStyles.bodySm.copyWith(color: AppColors.error),
+            ),
+          ],
+          if (details.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final (label, value) in details)
+                  Chip(
+                    visualDensity: VisualDensity.compact,
+                    label: Text('$label: $value'),
+                    padding: EdgeInsets.zero,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+              ],
+            ),
+          ],
         ],
       ),
     );

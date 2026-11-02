@@ -177,6 +177,8 @@ class OtpApiTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('user.id', $user->id)
+            ->assertJsonPath('user.location', 'Chennai, Tamil Nadu')
+            ->assertJsonPath('user.role', 'homeOwner')
             ->assertJsonPath('user.profile_complete', true);
         $this->assertDatabaseCount('users', 1);
     }
@@ -291,6 +293,8 @@ class OtpApiTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('user.id', $user->id)
+            ->assertJsonPath('user.location', 'Chennai, Tamil Nadu')
+            ->assertJsonPath('user.role', 'homeOwner')
             ->assertJsonPath('user.profile_complete', true);
         $this->assertDatabaseCount('users', 1);
     }

@@ -15,12 +15,18 @@ import '../models/project_member.dart';
 import '../models/project_notification.dart';
 import '../models/project_transaction.dart';
 import '../models/project_type.dart';
+import 'api_configuration.dart';
 
 class AuthApiException implements Exception {
-  const AuthApiException(this.message, {this.statusCode});
+  const AuthApiException(
+    this.message, {
+    this.statusCode,
+    this.retryAfterSeconds,
+  });
 
   final String message;
   final int? statusCode;
+  final int? retryAfterSeconds;
 
   bool get isUnauthorized => statusCode == 401;
 
@@ -29,17 +35,26 @@ class AuthApiException implements Exception {
 }
 
 class AuthApiService {
-  AuthApiService({http.Client? client}) : _client = client ?? http.Client();
+  AuthApiService({
+    http.Client? client,
+    ApiConfiguration? configuration,
+  })  : _client = client ?? http.Client(),
+        _configuration = configuration ?? ApiConfiguration.fromEnvironment();
 
   static final instance = AuthApiService();
-  static const _baseUrl = String.fromEnvironment(
-    'API_BASE_URL',
-    defaultValue: 'http://10.0.2.2:8000/api',
-  );
   static const _timeout = Duration(seconds: 15);
   static const _uploadTimeout = Duration(minutes: 10);
 
   final http.Client _client;
+  final ApiConfiguration _configuration;
+
+  Uri _apiUri(String path) {
+    try {
+      return _configuration.resolve(path);
+    } on ApiConfigurationException catch (error) {
+      throw AuthApiException(error.message);
+    }
+  }
 
   Future<void> requestOtp(String phoneNumber) async {
     await _post('/auth/otp/request', {
@@ -461,10 +476,7 @@ class AuthApiService {
     required String messageType,
   }) async {
     final size = await file.length();
-    final baseUrl = _baseUrl.endsWith('/') ? _baseUrl : '$_baseUrl/';
-    final uri = Uri.parse(baseUrl).resolve(
-      'projects/$projectId/group-chat/attachments',
-    );
+    final uri = _apiUri('projects/$projectId/group-chat/attachments');
     final request = http.MultipartRequest('POST', uri)
       ..headers.addAll({
         'Accept': 'application/json',
@@ -533,8 +545,7 @@ class AuthApiService {
     required String projectId,
     required int messageId,
   }) {
-    final baseUrl = _baseUrl.endsWith('/') ? _baseUrl : '$_baseUrl/';
-    final uri = Uri.parse(baseUrl).resolve(
+    final uri = _apiUri(
       'projects/$projectId/group-chat/attachments/$messageId',
     );
     return _downloadToTemporaryFile(uri, token);
@@ -571,8 +582,7 @@ class AuthApiService {
     required int fileSize,
     required Stream<List<int>> fileBytes,
   }) async {
-    final baseUrl = _baseUrl.endsWith('/') ? _baseUrl : '$_baseUrl/';
-    final uri = Uri.parse(baseUrl).resolve(
+    final uri = _apiUri(
       'projects/$projectId/members/$memberUserId/messages/attachments',
     );
     final request = http.MultipartRequest('POST', uri)
@@ -645,8 +655,7 @@ class AuthApiService {
     if (size == null) {
       throw const AuthApiException('Could not read the selected file.');
     }
-    final baseUrl = _baseUrl.endsWith('/') ? _baseUrl : '$_baseUrl/';
-    final uri = Uri.parse(baseUrl).resolve('projects/$projectId/documents');
+    final uri = _apiUri('projects/$projectId/documents');
     final request = http.MultipartRequest('POST', uri)
       ..headers.addAll({
         'Accept': 'application/json',
@@ -693,9 +702,7 @@ class AuthApiService {
     required String projectId,
     required int documentId,
   }) async {
-    final baseUrl = _baseUrl.endsWith('/') ? _baseUrl : '$_baseUrl/';
-    final uri =
-        Uri.parse(baseUrl).resolve('projects/$projectId/documents/$documentId');
+    final uri = _apiUri('projects/$projectId/documents/$documentId');
     return _downloadToTemporaryFile(uri, token);
   }
 
@@ -705,8 +712,7 @@ class AuthApiService {
     required int memberUserId,
     required int messageId,
   }) {
-    final baseUrl = _baseUrl.endsWith('/') ? _baseUrl : '$_baseUrl/';
-    final uri = Uri.parse(baseUrl).resolve(
+    final uri = _apiUri(
       'projects/$projectId/members/$memberUserId/messages/$messageId/attachment',
     );
     return _downloadToTemporaryFile(uri, token);
@@ -734,7 +740,15 @@ class AuthApiService {
     }
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      _decodeResponse(await http.Response.fromStream(response));
+      try {
+        _decodeResponse(
+          await http.Response.fromStream(response).timeout(_uploadTimeout),
+        );
+      } on TimeoutException {
+        throw const AuthApiException(
+          'The API did not finish its error response. Try again.',
+        );
+      }
       throw const AuthApiException('The file could not be downloaded.');
     }
 
@@ -771,11 +785,15 @@ class AuthApiService {
   Future<ProjectInvitation> createProjectInvitation({
     required String token,
     required String projectId,
-    required String role,
+    required String inviteeName,
+    required String inviteeDesignation,
   }) async {
     final response = await _post(
       '/projects/$projectId/invitations',
-      {'role': role},
+      {
+        'invitee_name': inviteeName,
+        'invitee_designation': inviteeDesignation,
+      },
       headers: {'Authorization': 'Bearer $token'},
     );
     final invitation = response['invitation'];
@@ -874,6 +892,75 @@ class AuthApiService {
     return _projectFromResponse(response);
   }
 
+  Future<Project> updateProject({
+    required String token,
+    required String projectId,
+    required String name,
+    required String location,
+    required ProjectType type,
+    double? latitude,
+    double? longitude,
+  }) async {
+    final response = await _patch(
+      '/projects/$projectId',
+      {
+        'name': name,
+        'location': location,
+        'type': type.apiValue,
+        'latitude': latitude,
+        'longitude': longitude,
+      },
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    return _projectFromResponse(response);
+  }
+
+  Future<Project> archiveProject({
+    required String token,
+    required String projectId,
+  }) async {
+    final response = await _post(
+      '/projects/$projectId/archive',
+      const {},
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    return _projectFromResponse(response);
+  }
+
+  Future<Project> deleteProject({
+    required String token,
+    required String projectId,
+  }) async {
+    final response = await _delete(
+      '/projects/$projectId',
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    return _projectFromResponse(response);
+  }
+
+  Future<Project> restoreProject({
+    required String token,
+    required String projectId,
+  }) async {
+    final response = await _post(
+      '/projects/$projectId/restore',
+      const {},
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    return _projectFromResponse(response);
+  }
+
+  Future<void> removeProjectMember({
+    required String token,
+    required String projectId,
+    required int memberUserId,
+  }) async {
+    await _delete(
+      '/projects/$projectId/members/$memberUserId',
+      headers: {'Authorization': 'Bearer $token'},
+    );
+  }
+
   Future<Project> uploadProjectPhoto({
     required String token,
     required String projectId,
@@ -913,9 +1000,7 @@ class AuthApiService {
     required XFile photo,
     Map<String, String> headers = const {},
   }) async {
-    final baseUrl = _baseUrl.endsWith('/') ? _baseUrl : '$_baseUrl/';
-    final uri =
-        Uri.parse(baseUrl).resolve(path.replaceFirst(RegExp(r'^/'), ''));
+    final uri = _apiUri(path);
     final request = http.MultipartRequest('POST', uri)
       ..headers.addAll({'Accept': 'application/json', ...headers})
       ..fields.addAll(fields)
@@ -991,9 +1076,7 @@ class AuthApiService {
     Map<String, dynamic> body, {
     Map<String, String> headers = const {},
   }) async {
-    final baseUrl = _baseUrl.endsWith('/') ? _baseUrl : '$_baseUrl/';
-    final uri =
-        Uri.parse(baseUrl).resolve(path.replaceFirst(RegExp(r'^/'), ''));
+    final uri = _apiUri(path);
     late final http.Response response;
 
     try {
@@ -1027,9 +1110,7 @@ class AuthApiService {
     String path, {
     Map<String, String> headers = const {},
   }) async {
-    final baseUrl = _baseUrl.endsWith('/') ? _baseUrl : '$_baseUrl/';
-    final uri =
-        Uri.parse(baseUrl).resolve(path.replaceFirst(RegExp(r'^/'), ''));
+    final uri = _apiUri(path);
     late final http.Response response;
 
     try {
@@ -1060,9 +1141,7 @@ class AuthApiService {
     Map<String, dynamic> body, {
     Map<String, String> headers = const {},
   }) async {
-    final baseUrl = _baseUrl.endsWith('/') ? _baseUrl : '$_baseUrl/';
-    final uri =
-        Uri.parse(baseUrl).resolve(path.replaceFirst(RegExp(r'^/'), ''));
+    final uri = _apiUri(path);
     late final http.Response response;
 
     try {
@@ -1077,6 +1156,36 @@ class AuthApiService {
             body: jsonEncode(body),
           )
           .timeout(_timeout);
+    } on SocketException {
+      throw const AuthApiException(
+        'Cannot reach the API. Check that Laravel is running and the API URL is correct.',
+      );
+    } on TimeoutException {
+      throw const AuthApiException('The API request timed out. Try again.');
+    } on http.ClientException {
+      throw const AuthApiException(
+        'Could not connect to the API. Check the device network and API URL.',
+      );
+    }
+
+    return _decodeResponse(response);
+  }
+
+  Future<Map<String, dynamic>> _delete(
+    String path, {
+    Map<String, String> headers = const {},
+  }) async {
+    final uri = _apiUri(path);
+    late final http.Response response;
+
+    try {
+      response = await _client.delete(
+        uri,
+        headers: {
+          'Accept': 'application/json',
+          ...headers,
+        },
+      ).timeout(_timeout);
     } on SocketException {
       throw const AuthApiException(
         'Cannot reach the API. Check that Laravel is running and the API URL is correct.',
@@ -1109,6 +1218,7 @@ class AuthApiService {
       throw AuthApiException(
         _messageFrom(data),
         statusCode: response.statusCode,
+        retryAfterSeconds: int.tryParse(response.headers['retry-after'] ?? ''),
       );
     }
 

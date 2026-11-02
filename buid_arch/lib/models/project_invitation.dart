@@ -3,19 +3,21 @@ import 'project.dart';
 class ProjectInvitation {
   const ProjectInvitation({
     required this.id,
-    required this.role,
     required this.status,
     required this.createdAt,
     required this.expiresAt,
+    this.role,
     this.token,
     this.acceptedAt,
     this.declinedAt,
     this.revokedAt,
     this.inviterName,
+    this.inviteeName,
+    this.inviteeDesignation,
   });
 
   final int id;
-  final String role;
+  final String? role;
   final String status;
   final String? token;
   final DateTime createdAt;
@@ -24,6 +26,8 @@ class ProjectInvitation {
   final DateTime? declinedAt;
   final DateTime? revokedAt;
   final String? inviterName;
+  final String? inviteeName;
+  final String? inviteeDesignation;
 
   Uri get qrLink => Uri(
         scheme: 'buildarch',
@@ -39,7 +43,6 @@ class ProjectInvitation {
     final expiresAt = DateTime.tryParse(json['expires_at']?.toString() ?? '');
 
     if (id is! num ||
-        role is! String ||
         status is! String ||
         createdAt == null ||
         expiresAt == null) {
@@ -48,7 +51,7 @@ class ProjectInvitation {
 
     return ProjectInvitation(
       id: id.toInt(),
-      role: role,
+      role: role is String ? role : null,
       status: status,
       token: json['token'] is String ? json['token'] as String : null,
       createdAt: createdAt,
@@ -58,6 +61,12 @@ class ProjectInvitation {
       revokedAt: DateTime.tryParse(json['revoked_at']?.toString() ?? ''),
       inviterName: json['inviter_name'] is String
           ? json['inviter_name'] as String
+          : null,
+      inviteeName: json['invitee_name'] is String
+          ? json['invitee_name'] as String
+          : null,
+      inviteeDesignation: json['invitee_designation'] is String
+          ? json['invitee_designation'] as String
           : null,
     );
   }

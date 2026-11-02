@@ -13,6 +13,8 @@ class Project {
     this.photoUrl,
     this.memberRole,
     this.invitedByName,
+    this.isArchived = false,
+    this.isDeleted = false,
   });
 
   final String id;
@@ -28,6 +30,8 @@ class Project {
   final String? photoUrl;
   final String? memberRole;
   final String? invitedByName;
+  final bool isArchived;
+  final bool isDeleted;
 
   factory Project.fromJson(Map<String, dynamic> json) {
     final id = json['id'];
@@ -68,6 +72,10 @@ class Project {
       invitedByName: json['invited_by_name'] is String
           ? json['invited_by_name'] as String
           : null,
+      isArchived:
+          json['is_archived'] is bool ? json['is_archived'] as bool : false,
+      isDeleted:
+          json['is_deleted'] is bool ? json['is_deleted'] as bool : false,
     );
   }
 }

@@ -103,6 +103,8 @@ class OtpController extends Controller
                         'name' => $user->name,
                         'phone_number' => $user->phone_number,
                         'email' => $user->email,
+                        'location' => $user->location,
+                        'role' => $user->role,
                         'profile_complete' => filled($user->name)
                             && filled($user->location)
                             && filled($user->role)
@@ -245,6 +247,8 @@ class OtpController extends Controller
                 'name' => $user->name,
                 'email' => $user->email,
                 'google_id' => $user->google_id,
+                'location' => $user->location,
+                'role' => $user->role,
                 'profile_complete' => filled($user->name)
                     && filled($user->location)
                     && filled($user->role)

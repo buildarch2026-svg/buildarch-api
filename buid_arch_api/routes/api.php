@@ -35,74 +35,87 @@ Route::middleware('auth:sanctum')->group(function () {
         ->middleware('throttle:60,1');
     Route::get('/projects', [ProjectController::class, 'index']);
     Route::post('/projects', [ProjectController::class, 'store']);
-    Route::post('/projects/{project}/photo', [ProjectController::class, 'updatePhoto'])
-        ->middleware('throttle:10,1');
-    Route::get('/projects/{project}/group-chat', [ProjectGroupChatController::class, 'index'])
-        ->middleware('throttle:60,1');
-    Route::get('/projects/{project}/group-chat/files', [ProjectGroupChatController::class, 'files'])
-        ->middleware('throttle:30,1');
-    Route::post(
-        '/projects/{project}/group-chat/messages',
-        [ProjectGroupChatController::class, 'storeText'],
-    )->middleware('throttle:30,1');
-    Route::post(
-        '/projects/{project}/group-chat/voice',
-        [ProjectGroupChatController::class, 'storeAttachment'],
-    )->middleware('throttle:10,1');
-    Route::get(
-        '/projects/{project}/group-chat/voice/{message}',
-        [ProjectGroupChatController::class, 'downloadAttachment'],
-    )->whereNumber('message')->middleware('throttle:30,1');
-    Route::post(
-        '/projects/{project}/group-chat/attachments',
-        [ProjectGroupChatController::class, 'storeAttachment'],
-    )->middleware('throttle:10,1');
-    Route::get(
-        '/projects/{project}/group-chat/attachments/{message}',
-        [ProjectGroupChatController::class, 'downloadAttachment'],
-    )->middleware('throttle:30,1');
-    Route::get('/projects/{project}/invitations', [ProjectInvitationController::class, 'index'])
-        ->middleware('throttle:30,1');
-    Route::get('/projects/{project}/members', [ProjectMemberController::class, 'index'])
-        ->middleware('throttle:30,1');
-    Route::get(
-        '/projects/{project}/members/{memberUserId}/messages',
-        [ProjectMessageController::class, 'index'],
-    )->whereNumber('memberUserId')->middleware('throttle:60,1');
-    Route::post(
-        '/projects/{project}/members/{memberUserId}/messages',
-        [ProjectMessageController::class, 'store'],
-    )->whereNumber('memberUserId')->middleware('throttle:30,1');
-    Route::post(
-        '/projects/{project}/members/{memberUserId}/messages/attachments',
-        [ProjectMessageController::class, 'storeAttachment'],
-    )->whereNumber('memberUserId')->middleware('throttle:10,1');
-    Route::get(
-        '/projects/{project}/members/{memberUserId}/messages/{message}/attachment',
-        [ProjectMessageController::class, 'downloadAttachment'],
-    )->whereNumber('memberUserId')->whereNumber('message')->middleware('throttle:30,1');
-    Route::get('/projects/{project}/documents', [ProjectDocumentController::class, 'index'])
-        ->middleware('throttle:30,1');
-    Route::post('/projects/{project}/documents', [ProjectDocumentController::class, 'store'])
-        ->middleware('throttle:10,1');
-    Route::get('/projects/{project}/transactions', [ProjectTransactionController::class, 'index'])
-        ->middleware('throttle:30,1');
-    Route::post('/projects/{project}/transactions', [ProjectTransactionController::class, 'store'])
-        ->middleware('throttle:30,1');
-    Route::patch(
-        '/projects/{project}/transactions/{transaction}',
-        [ProjectTransactionController::class, 'updateStatus'],
-    )->whereNumber('transaction')->middleware('throttle:30,1');
-    Route::get(
-        '/projects/{project}/documents/{document}',
-        [ProjectDocumentController::class, 'download'],
-    )->middleware('throttle:30,1');
-    Route::post('/projects/{project}/invitations', [ProjectInvitationController::class, 'store'])
-        ->middleware('throttle:10,1');
-    Route::post(
-        '/projects/{project}/invitations/{invitation}/revoke',
-        [ProjectInvitationController::class, 'revoke'],
-    )->middleware('throttle:30,1');
+    Route::patch('/projects/{project}', [ProjectController::class, 'update'])
+        ->middleware('project.active');
+    Route::post('/projects/{project}/archive', [ProjectController::class, 'archive']);
+    Route::delete('/projects/{project}', [ProjectController::class, 'delete']);
+    Route::post('/projects/{project}/restore', [ProjectController::class, 'restore'])
+        ->withTrashed();
+    Route::delete(
+        '/projects/{project}/members/{memberUserId}',
+        [ProjectMemberController::class, 'destroy'],
+    )->whereNumber('memberUserId')->middleware('project.active');
+
+    Route::middleware('project.active')->group(function () {
+        Route::post('/projects/{project}/photo', [ProjectController::class, 'updatePhoto'])
+            ->middleware('throttle:10,1');
+        Route::get('/projects/{project}/group-chat', [ProjectGroupChatController::class, 'index'])
+            ->middleware('throttle:60,1');
+        Route::get('/projects/{project}/group-chat/files', [ProjectGroupChatController::class, 'files'])
+            ->middleware('throttle:30,1');
+        Route::post(
+            '/projects/{project}/group-chat/messages',
+            [ProjectGroupChatController::class, 'storeText'],
+        )->middleware('throttle:30,1');
+        Route::post(
+            '/projects/{project}/group-chat/voice',
+            [ProjectGroupChatController::class, 'storeAttachment'],
+        )->middleware('throttle:10,1');
+        Route::get(
+            '/projects/{project}/group-chat/voice/{message}',
+            [ProjectGroupChatController::class, 'downloadAttachment'],
+        )->whereNumber('message')->middleware('throttle:30,1');
+        Route::post(
+            '/projects/{project}/group-chat/attachments',
+            [ProjectGroupChatController::class, 'storeAttachment'],
+        )->middleware('throttle:10,1');
+        Route::get(
+            '/projects/{project}/group-chat/attachments/{message}',
+            [ProjectGroupChatController::class, 'downloadAttachment'],
+        )->middleware('throttle:30,1');
+        Route::get('/projects/{project}/invitations', [ProjectInvitationController::class, 'index'])
+            ->middleware('throttle:30,1');
+        Route::get('/projects/{project}/members', [ProjectMemberController::class, 'index'])
+            ->middleware('throttle:30,1');
+        Route::get(
+            '/projects/{project}/members/{memberUserId}/messages',
+            [ProjectMessageController::class, 'index'],
+        )->whereNumber('memberUserId')->middleware('throttle:60,1');
+        Route::post(
+            '/projects/{project}/members/{memberUserId}/messages',
+            [ProjectMessageController::class, 'store'],
+        )->whereNumber('memberUserId')->middleware('throttle:30,1');
+        Route::post(
+            '/projects/{project}/members/{memberUserId}/messages/attachments',
+            [ProjectMessageController::class, 'storeAttachment'],
+        )->whereNumber('memberUserId')->middleware('throttle:10,1');
+        Route::get(
+            '/projects/{project}/members/{memberUserId}/messages/{message}/attachment',
+            [ProjectMessageController::class, 'downloadAttachment'],
+        )->whereNumber('memberUserId')->whereNumber('message')->middleware('throttle:30,1');
+        Route::get('/projects/{project}/documents', [ProjectDocumentController::class, 'index'])
+            ->middleware('throttle:30,1');
+        Route::post('/projects/{project}/documents', [ProjectDocumentController::class, 'store'])
+            ->middleware('throttle:10,1');
+        Route::get('/projects/{project}/transactions', [ProjectTransactionController::class, 'index'])
+            ->middleware('throttle:30,1');
+        Route::post('/projects/{project}/transactions', [ProjectTransactionController::class, 'store'])
+            ->middleware('throttle:30,1');
+        Route::patch(
+            '/projects/{project}/transactions/{transaction}',
+            [ProjectTransactionController::class, 'updateStatus'],
+        )->whereNumber('transaction')->middleware('throttle:30,1');
+        Route::get(
+            '/projects/{project}/documents/{document}',
+            [ProjectDocumentController::class, 'download'],
+        )->middleware('throttle:30,1');
+        Route::post('/projects/{project}/invitations', [ProjectInvitationController::class, 'store'])
+            ->middleware('throttle:10,1');
+        Route::post(
+            '/projects/{project}/invitations/{invitation}/revoke',
+            [ProjectInvitationController::class, 'revoke'],
+        )->middleware('throttle:30,1');
+    });
     Route::get('/invitations/{token}', [ProjectInvitationController::class, 'show'])
         ->middleware('throttle:30,1');
     Route::post('/invitations/{token}/accept', [ProjectInvitationController::class, 'accept'])

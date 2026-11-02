@@ -8,6 +8,8 @@ $appPath = $PSScriptRoot
 $apiPath = Join-Path (Split-Path $appPath -Parent) 'buid_arch_api'
 $apiEnvPath = Join-Path $apiPath '.env'
 $localPropertiesPath = Join-Path $appPath 'android\local.properties'
+$apiPort = 8000
+$apiBaseUrl = "http://127.0.0.1:$apiPort/api"
 
 if (!(Test-Path $apiEnvPath)) {
     throw "Laravel environment file not found: $apiEnvPath"
@@ -53,7 +55,7 @@ if ($DeviceId -notin $connectedDevices) {
 function Test-LocalApi {
     try {
         $response = Invoke-WebRequest `
-            -Uri 'http://127.0.0.1:8000/api/user' `
+            -Uri "$apiBaseUrl/user" `
             -Headers @{ Accept = 'application/json' } `
             -TimeoutSec 3 `
             -UseBasicParsing
@@ -69,7 +71,7 @@ function Test-LocalApi {
 }
 
 if (!(Test-LocalApi)) {
-    $listener = Get-NetTCPConnection -State Listen -LocalPort 8000 -ErrorAction SilentlyContinue |
+    $listener = Get-NetTCPConnection -State Listen -LocalPort $apiPort -ErrorAction SilentlyContinue |
         Select-Object -First 1
     if ($listener) {
         throw 'Port 8000 is occupied, but the Laravel API did not respond. Stop the other service and retry.'
@@ -89,7 +91,7 @@ if (!(Test-LocalApi)) {
             '-d', 'post_max_size=110M',
             '-d', 'max_input_time=600',
             '-d', 'max_execution_time=600',
-            '-S', '127.0.0.1:8000',
+            '-S', "127.0.0.1:$apiPort",
             $routerPath
         ) `
         -WorkingDirectory $publicPath `
@@ -110,9 +112,14 @@ if (!(Test-LocalApi)) {
     }
 }
 
-& $adbPath -s $DeviceId reverse tcp:8000 tcp:8000
+& $adbPath -s $DeviceId reverse "tcp:$apiPort" "tcp:$apiPort"
 if ($LASTEXITCODE -ne 0) {
     throw 'Could not forward the API port to the phone. Reconnect the phone and authorize USB debugging.'
+}
+$reverseMappings = & $adbPath -s $DeviceId reverse --list
+if ($LASTEXITCODE -ne 0 -or
+    !($reverseMappings | Select-String -Quiet "tcp:$apiPort tcp:$apiPort")) {
+    throw 'The API port forwarding could not be verified. Reconnect the phone and retry.'
 }
 
 $flutter = Get-Command flutter -ErrorAction Stop
@@ -121,7 +128,7 @@ Push-Location $appPath
 try {
     & $flutter.Source run `
         -d $DeviceId `
-        --dart-define=API_BASE_URL=http://127.0.0.1:8000/api `
+        "--dart-define=API_BASE_URL=$apiBaseUrl" `
         --dart-define="GOOGLE_WEB_CLIENT_ID=$googleClientId"
     exit $LASTEXITCODE
 } finally {

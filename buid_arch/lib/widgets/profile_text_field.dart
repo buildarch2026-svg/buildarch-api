@@ -67,11 +67,17 @@ class ProfileTextField extends StatelessWidget {
               Expanded(
                 child: readOnly
                     ? Text(
-                        controller.text,
+                        controller.text.isEmpty
+                            ? (hintText ?? '')
+                            : controller.text,
                         style: AppTextStyles.bodyMd.copyWith(
                           fontSize: 16,
-                          color: AppColors.textPrimary,
+                          color: controller.text.isEmpty
+                              ? AppColors.outline
+                              : AppColors.textPrimary,
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       )
                     : TextField(
                         controller: controller,

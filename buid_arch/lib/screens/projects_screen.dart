@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../models/app_role.dart';
+import '../models/project.dart';
+import '../services/auth_api_service.dart';
 import '../services/auth_session_service.dart';
 import '../services/projects_store.dart';
 import '../services/user_role_service.dart';
@@ -11,6 +13,8 @@ import '../widgets/project_card.dart';
 import '../widgets/notification_action_button.dart';
 import 'create_project_screen.dart';
 import 'project_dashboard_screen.dart';
+
+enum _ProjectManagementAction { archive, delete, restore }
 
 /// "Your Projects" - the home owner's landing screen after login/unlock.
 /// Shows an empty state until the first project is created.
@@ -28,6 +32,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
   AppRole? _userRole;
   bool _isLoadingRole = true;
   bool _roleLoadFailed = false;
+  bool _projectActionInProgress = false;
 
   @override
   void initState() {
@@ -47,17 +52,16 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
 
   Future<void> _loadUserRole() async {
     try {
-      var role = await UserRoleService.instance.read();
-      if (role == null) {
-        final user = await AuthSessionService.instance.readUser();
-        final savedRole = user?['role'];
-        for (final candidate in AppRole.values) {
-          if (candidate.name == savedRole) {
-            role = candidate;
-            break;
-          }
+      final user = await AuthSessionService.instance.readUser();
+      final savedRole = user?['role'];
+      AppRole? role;
+      for (final candidate in AppRole.values) {
+        if (candidate.name == savedRole) {
+          role = candidate;
+          break;
         }
       }
+      role ??= await UserRoleService.instance.read();
       if (!mounted) return;
       setState(() {
         _userRole = role;
@@ -77,6 +81,83 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const CreateProjectScreen()),
     );
+  }
+
+  Future<void> _editProject(Project project) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CreateProjectScreen(project: project),
+      ),
+    );
+  }
+
+  Future<void> _manageProject(
+    Project project,
+    _ProjectManagementAction action,
+  ) async {
+    if (_projectActionInProgress) return;
+    if (action != _ProjectManagementAction.restore) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(switch (action) {
+            _ProjectManagementAction.archive => 'Archive project?',
+            _ProjectManagementAction.delete => 'Delete project?',
+            _ProjectManagementAction.restore => 'Restore project?',
+          }),
+          content: Text(switch (action) {
+            _ProjectManagementAction.archive =>
+              'This project and its team access will be paused. You can restore it later.',
+            _ProjectManagementAction.delete =>
+              'The project will move to Deleted. Its files and history are retained and it can be restored.',
+            _ProjectManagementAction.restore => '',
+          }),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: Text(switch (action) {
+                _ProjectManagementAction.archive => 'Archive',
+                _ProjectManagementAction.delete => 'Delete',
+                _ProjectManagementAction.restore => 'Restore',
+              }),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+    }
+
+    setState(() => _projectActionInProgress = true);
+    try {
+      switch (action) {
+        case _ProjectManagementAction.archive:
+          await ProjectsStore.instance.archiveProject(project.id);
+        case _ProjectManagementAction.delete:
+          await ProjectsStore.instance.deleteProject(project.id);
+        case _ProjectManagementAction.restore:
+          await ProjectsStore.instance.restoreProject(project.id);
+      }
+      if (!mounted) return;
+      final message = switch (action) {
+        _ProjectManagementAction.archive => 'Project archived.',
+        _ProjectManagementAction.delete => 'Project moved to Deleted.',
+        _ProjectManagementAction.restore => 'Project restored.',
+      };
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(message)));
+    } on AuthApiException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(error.message)));
+    } finally {
+      if (mounted) setState(() => _projectActionInProgress = false);
+    }
   }
 
   Future<void> _openProfile() async {
@@ -217,6 +298,11 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
 
     final ownedProjects =
         store.projects.where((project) => project.isOwner).toList();
+    final activeProjects = ownedProjects
+        .where((project) => !project.isArchived && !project.isDeleted)
+        .toList();
+    final inactiveProjects =
+        ownedProjects.where((project) => project.isArchived).toList();
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
       children: [
@@ -236,8 +322,8 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  '${ownedProjects.length} '
-                  '${ownedProjects.length == 1 ? 'project' : 'projects'}',
+                  '${activeProjects.length} '
+                  '${activeProjects.length == 1 ? 'project' : 'projects'}',
                   style: AppTextStyles.bodyMd.copyWith(
                     color: AppColors.outline,
                   ),
@@ -259,21 +345,67 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
           ],
         ),
         const SizedBox(height: 16),
-        if (ownedProjects.isEmpty)
-          _buildNoOwnedProjects()
+        if (activeProjects.isEmpty)
+          ownedProjects.isEmpty
+              ? _buildNoOwnedProjects()
+              : _buildNoActiveProjects()
         else
-          for (final project in ownedProjects) ...[
-            ProjectCard(
-              project: project,
-              onTap: () => Navigator.of(context).push(
+          for (final project in activeProjects) ...[
+            _projectCard(project),
+            const SizedBox(height: 12),
+          ],
+        if (inactiveProjects.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Text(
+            'Archived',
+            style: AppTextStyles.cardTitle.copyWith(
+              fontSize: 18,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 12),
+          for (final project in inactiveProjects) ...[
+            _projectCard(project),
+            const SizedBox(height: 12),
+          ],
+        ],
+      ],
+    );
+  }
+
+  Widget _projectCard(Project project) {
+    final inactive = project.isArchived || project.isDeleted;
+    return ProjectCard(
+      project: project,
+      onTap: inactive
+          ? null
+          : () => Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (_) => ProjectDashboardScreen(project: project),
                 ),
               ),
-            ),
-            const SizedBox(height: 12),
-          ],
-      ],
+      onEdit: inactive ? null : () => _editProject(project),
+      onArchive: inactive || _projectActionInProgress
+          ? null
+          : () => _manageProject(project, _ProjectManagementAction.archive),
+      onDelete: project.isDeleted || _projectActionInProgress
+          ? null
+          : () => _manageProject(project, _ProjectManagementAction.delete),
+      onRestore: inactive && !_projectActionInProgress
+          ? () => _manageProject(project, _ProjectManagementAction.restore)
+          : null,
+    );
+  }
+
+  Widget _buildNoActiveProjects() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 18),
+      child: Text(
+        'No active projects. Restore one below or create a new project.',
+        style: AppTextStyles.bodyMd.copyWith(
+          color: AppColors.onSurfaceVariant,
+        ),
+      ),
     );
   }
 

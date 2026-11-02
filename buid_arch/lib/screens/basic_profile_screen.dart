@@ -13,6 +13,7 @@ import '../widgets/auth_button.dart';
 import '../widgets/profile_text_field.dart';
 import '../widgets/setup_pill.dart';
 import 'app_lock_setup_screen.dart';
+import 'project_location_picker_screen.dart';
 
 /// "Tell Us About Your Project" - name, location and project details,
 /// shown after Role selection (Home Owner).
@@ -45,7 +46,7 @@ class _BasicProfileScreenState extends State<BasicProfileScreen> {
   bool _phoneOtpSent = false;
   bool _sendingPhoneOtp = false;
   bool _verifyingPhone = false;
-  bool _gettingLocation = false;
+  bool _choosingLocation = false;
   String? _otpSentTo;
 
   @override
@@ -162,16 +163,24 @@ class _BasicProfileScreenState extends State<BasicProfileScreen> {
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
-  Future<void> _useCurrentLocation() async {
-    if (_gettingLocation) return;
-    setState(() => _gettingLocation = true);
+  Future<void> _chooseLocation() async {
+    if (_choosingLocation || _saving) return;
+    setState(() => _choosingLocation = true);
     try {
-      final address = await CurrentLocationService.instance.getCurrentAddress();
-      if (mounted) setState(() => _locationController.text = address);
-    } on CurrentLocationException catch (error) {
-      if (mounted) _showMessage(error.message);
+      final location = await Navigator.of(context).push<CurrentDeviceLocation>(
+        MaterialPageRoute(
+          builder: (_) => const ProjectLocationPickerScreen(
+            title: 'Choose Profile Location',
+            confirmLabel: 'Confirm Location',
+            consumeSharedLocation: false,
+          ),
+        ),
+      );
+      if (mounted && location != null) {
+        setState(() => _locationController.text = location.address);
+      }
     } finally {
-      if (mounted) setState(() => _gettingLocation = false);
+      if (mounted) setState(() => _choosingLocation = false);
     }
   }
 
@@ -418,20 +427,32 @@ class _BasicProfileScreenState extends State<BasicProfileScreen> {
             label: 'Location',
             icon: Icons.location_on_outlined,
             controller: _locationController,
-            hintText: 'City, State',
+            hintText: 'Choose a location',
+            readOnly: true,
+            trailing: IconButton(
+              tooltip: 'Choose profile location',
+              onPressed: _choosingLocation ? null : _chooseLocation,
+              icon: _choosingLocation
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.map_outlined),
+            ),
           ),
           const SizedBox(height: 4),
           Align(
             alignment: Alignment.centerLeft,
             child: InkWell(
-              onTap: _gettingLocation ? null : _useCurrentLocation,
+              onTap: _choosingLocation ? null : _chooseLocation,
               borderRadius: BorderRadius.circular(4),
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (_gettingLocation)
+                    if (_choosingLocation)
                       const SizedBox(
                         width: 16,
                         height: 16,
@@ -442,9 +463,9 @@ class _BasicProfileScreenState extends State<BasicProfileScreen> {
                           size: 16, color: AppColors.secondary),
                     const SizedBox(width: 4),
                     Text(
-                      _gettingLocation
-                          ? 'Getting location...'
-                          : 'Use current location',
+                      _choosingLocation
+                          ? 'Opening location picker...'
+                          : 'Search map or use current location',
                       style: AppTextStyles.bodyMd.copyWith(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,

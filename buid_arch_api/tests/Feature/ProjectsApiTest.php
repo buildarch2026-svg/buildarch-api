@@ -211,6 +211,8 @@ class ProjectsApiTest extends TestCase
         $project->invitations()->create([
             'invited_by_user_id' => $owner->id,
             'role' => 'contractor',
+            'invitee_name' => 'Project Member',
+            'invitee_designation' => 'Contractor',
             'token_hash' => hash('sha256', 'accepted-invitation'),
             'token_encrypted' => 'encrypted-token',
             'status' => 'accepted',

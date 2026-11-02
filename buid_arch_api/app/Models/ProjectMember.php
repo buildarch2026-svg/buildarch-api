@@ -11,6 +11,8 @@ class ProjectMember extends Model
         'project_id',
         'user_id',
         'role',
+        'display_name',
+        'designation',
     ];
 
     public function project(): BelongsTo

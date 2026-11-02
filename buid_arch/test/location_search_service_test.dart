@@ -20,6 +20,14 @@ void main() {
                 'display_name': 'Kochi, Ernakulam, Kerala, India',
                 'lat': '9.9312',
                 'lon': '76.2673',
+                'address': {
+                  'road': 'Marine Drive',
+                  'suburb': 'Ernakulam',
+                  'city': 'Kochi',
+                  'state': 'Kerala',
+                  'postcode': '682011',
+                  'country': 'India',
+                },
               },
             ]),
             200,
@@ -33,11 +41,18 @@ void main() {
       expect(requestedUri.queryParameters['q'], 'Kochi');
       expect(requestedUri.queryParameters['format'], 'jsonv2');
       expect(requestedUri.queryParameters['limit'], '5');
+      expect(requestedUri.queryParameters['addressdetails'], '1');
       expect(requestedHeaders['user-agent'], contains('BUIDARCh'));
       expect(results, hasLength(1));
       expect(results.single.name, 'Kochi, Ernakulam, Kerala, India');
       expect(results.single.latitude, 9.9312);
       expect(results.single.longitude, 76.2673);
+      expect(results.single.street, 'Marine Drive');
+      expect(results.single.locality, 'Ernakulam');
+      expect(results.single.city, 'Kochi');
+      expect(results.single.state, 'Kerala');
+      expect(results.single.postalCode, '682011');
+      expect(results.single.country, 'India');
     });
 
     test('rejects empty search terms without making a request', () async {

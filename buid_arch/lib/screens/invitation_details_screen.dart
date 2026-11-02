@@ -149,8 +149,11 @@ class _InvitationDetailsScreenState extends State<InvitationDetailsScreen> {
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
-  String _roleName(String role) =>
-      role == 'contractor' ? 'Contractor' : 'Designer';
+  String _roleName(String? role) => role == 'contractor'
+      ? 'Contractor'
+      : role == 'designer'
+          ? 'Designer'
+          : 'General invitation';
 
   String _invitationError(AuthApiException error) {
     if (error.statusCode == 404) {
@@ -193,8 +196,8 @@ class _InvitationDetailsScreenState extends State<InvitationDetailsScreen> {
         return 'This invitation is no longer available.';
     }
     if (!details.canAccept) {
-      return 'Sign in with a ${_roleName(details.invitation.role)} account '
-          'that is not already a member of this project.';
+      return 'Sign in with a Build Arch account that is not already a member '
+          'of this project.';
     }
     return 'You have been invited to join this project.';
   }
@@ -269,7 +272,11 @@ class _InvitationDetailsScreenState extends State<InvitationDetailsScreen> {
                 Text(details.project.location),
                 const Divider(height: 28),
                 _detailLine('Owner', details.ownerName),
-                _detailLine('Invited role', _roleName(invitation.role)),
+                _detailLine('Invitee', invitation.inviteeName ?? 'Project invitee'),
+                _detailLine(
+                  'Designation',
+                  invitation.inviteeDesignation ?? 'General invite',
+                ),
                 _detailLine(
                     'Invited by', invitation.inviterName ?? 'Project owner'),
                 _detailLine('Invitation date', _date(invitation.createdAt)),

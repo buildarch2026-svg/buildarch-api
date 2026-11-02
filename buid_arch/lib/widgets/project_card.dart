@@ -12,11 +12,19 @@ class ProjectCard extends StatelessWidget {
     required this.project,
     required this.onTap,
     this.joined = false,
+    this.onEdit,
+    this.onArchive,
+    this.onDelete,
+    this.onRestore,
   });
 
   final Project project;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final bool joined;
+  final VoidCallback? onEdit;
+  final VoidCallback? onArchive;
+  final VoidCallback? onDelete;
+  final VoidCallback? onRestore;
 
   @override
   Widget build(BuildContext context) {
@@ -59,11 +67,67 @@ class ProjectCard extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        const Icon(
-                          Icons.arrow_forward_rounded,
-                          color: AppColors.primaryContainer,
-                          size: 21,
-                        ),
+                        if (_hasManagementActions)
+                          PopupMenuButton<_ProjectAction>(
+                            tooltip: 'Manage project',
+                            onSelected: (action) => _onAction(action)?.call(),
+                            itemBuilder: (context) => [
+                              if (onEdit != null)
+                                const PopupMenuItem(
+                                  value: _ProjectAction.edit,
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.edit_outlined),
+                                      SizedBox(width: 12),
+                                      Text('Edit'),
+                                    ],
+                                  ),
+                                ),
+                              if (onArchive != null)
+                                const PopupMenuItem(
+                                  value: _ProjectAction.archive,
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.archive_outlined),
+                                      SizedBox(width: 12),
+                                      Text('Archive'),
+                                    ],
+                                  ),
+                                ),
+                              if (onDelete != null)
+                                const PopupMenuItem(
+                                  value: _ProjectAction.delete,
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.delete_outline),
+                                      SizedBox(width: 12),
+                                      Text('Delete'),
+                                    ],
+                                  ),
+                                ),
+                              if (onRestore != null)
+                                const PopupMenuItem(
+                                  value: _ProjectAction.restore,
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.restore),
+                                      SizedBox(width: 12),
+                                      Text('Restore'),
+                                    ],
+                                  ),
+                                ),
+                            ],
+                            icon: const Icon(
+                              Icons.more_vert,
+                              color: AppColors.primaryContainer,
+                            ),
+                          )
+                        else if (onTap != null)
+                          const Icon(
+                            Icons.arrow_forward_rounded,
+                            color: AppColors.primaryContainer,
+                            size: 21,
+                          ),
                       ],
                     ),
                     const SizedBox(height: 7),
@@ -128,6 +192,19 @@ class ProjectCard extends StatelessWidget {
     );
   }
 
+  bool get _hasManagementActions =>
+      onEdit != null ||
+      onArchive != null ||
+      onDelete != null ||
+      onRestore != null;
+
+  VoidCallback? _onAction(_ProjectAction action) => switch (action) {
+        _ProjectAction.edit => onEdit,
+        _ProjectAction.archive => onArchive,
+        _ProjectAction.delete => onDelete,
+        _ProjectAction.restore => onRestore,
+      };
+
   String _roleName(String? role) => switch (role) {
         'contractor' => 'Contractor',
         'designer' => 'Designer',
@@ -173,7 +250,13 @@ class ProjectCard extends StatelessWidget {
                   Icon(project.type.icon, size: 15, color: AppColors.primary),
                   const SizedBox(width: 6),
                   Text(
-                    joined ? 'TEAM PROJECT' : 'MY PROJECT',
+                    project.isDeleted
+                        ? 'DELETED'
+                        : project.isArchived
+                            ? 'ARCHIVED'
+                            : joined
+                                ? 'TEAM PROJECT'
+                                : 'MY PROJECT',
                     style: AppTextStyles.labelTechnical.copyWith(
                       color: AppColors.primary,
                       fontWeight: FontWeight.w700,
@@ -212,6 +295,8 @@ class ProjectCard extends StatelessWidget {
     );
   }
 }
+
+enum _ProjectAction { edit, archive, delete, restore }
 
 class _TypeChip extends StatelessWidget {
   const _TypeChip({required this.icon, required this.label});

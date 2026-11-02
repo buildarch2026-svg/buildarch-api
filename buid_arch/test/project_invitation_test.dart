@@ -6,15 +6,19 @@ void main() {
     final token = List.filled(64, 'a').join();
     final invitation = ProjectInvitation(
       id: 5,
-      role: 'contractor',
+      role: 'general',
       status: 'pending',
       token: token,
+      inviteeName: 'Rahul Menon',
+      inviteeDesignation: 'Site Engineer',
       createdAt: DateTime.utc(2026, 10, 24),
       expiresAt: DateTime.utc(2026, 10, 31),
     );
 
     expect(invitation.qrLink.toString(), 'buildarch://invite/$token');
     expect(invitation.qrLink.queryParameters, isEmpty);
+    expect(invitation.inviteeName, 'Rahul Menon');
+    expect(invitation.inviteeDesignation, 'Site Engineer');
   });
 
   test('invitation details retain project coordinates for member dashboard',
@@ -22,7 +26,9 @@ void main() {
     final details = ProjectInvitationDetails.fromJson({
       'invitation': {
         'id': 5,
-        'role': 'designer',
+        'role': 'general',
+        'invitee_name': 'Anjali Nair',
+        'invitee_designation': 'Interior Designer',
         'status': 'pending',
         'created_at': '2026-10-24T00:00:00Z',
         'expires_at': '2026-10-31T00:00:00Z',
@@ -43,7 +49,9 @@ void main() {
     });
 
     expect(details.canAccept, isTrue);
-    expect(details.invitation.role, 'designer');
+    expect(details.invitation.role, 'general');
+    expect(details.invitation.inviteeName, 'Anjali Nair');
+    expect(details.invitation.inviteeDesignation, 'Interior Designer');
     expect(details.project.id, '12');
     expect(details.project.latitude, 9.9312);
     expect(details.project.isOwner, isFalse);

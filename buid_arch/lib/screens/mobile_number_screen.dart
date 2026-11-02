@@ -52,6 +52,45 @@ class _MobileNumberScreenState extends State<MobileNumberScreen> {
 
   bool get _isValid => _controller.text.replaceAll(' ', '').length == 10;
 
+  String _retryWait(int seconds) {
+    final minutes = seconds ~/ 60;
+    final remainingSeconds = seconds % 60;
+    if (minutes == 0) {
+      return '$seconds ${seconds == 1 ? 'second' : 'seconds'}';
+    }
+    if (remainingSeconds == 0) {
+      return '$minutes ${minutes == 1 ? 'minute' : 'minutes'}';
+    }
+    return '$minutes ${minutes == 1 ? 'minute' : 'minutes'} and '
+        '$remainingSeconds ${remainingSeconds == 1 ? 'second' : 'seconds'}';
+  }
+
+  Future<void> _showRateLimitAlert(AuthApiException error) async {
+    final seconds =
+        error.retryAfterSeconds != null && error.retryAfterSeconds! > 0
+            ? error.retryAfterSeconds!
+            : 600;
+    final wait = _retryWait(seconds);
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.hourglass_top_rounded),
+        title: const Text('Please wait before requesting another code'),
+        content: Text(
+          'For your security, sign-in code requests are temporarily limited. '
+          'Please try again in about $wait. Your account is not blocked.',
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
   String get _heading => switch (widget.authFlow) {
         AuthFlow.signUp => 'Create Your Account',
         AuthFlow.mobileLogin => 'Enter Your Number',
@@ -94,7 +133,11 @@ class _MobileNumberScreenState extends State<MobileNumberScreen> {
         ),
       );
     } on AuthApiException catch (error) {
-      if (mounted) setState(() => _requestError = error.message);
+      if (error.statusCode == 429) {
+        await _showRateLimitAlert(error);
+      } else if (mounted) {
+        setState(() => _requestError = error.message);
+      }
     } finally {
       if (mounted) setState(() => _sendingOtp = false);
     }
