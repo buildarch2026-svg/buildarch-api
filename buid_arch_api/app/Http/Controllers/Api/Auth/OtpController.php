@@ -7,6 +7,7 @@ use App\Models\OtpChallenge;
 use App\Models\User;
 use App\Services\GoogleIdentityVerificationUnavailable;
 use App\Services\GoogleIdTokenVerifier;
+use App\Services\WhatsAppOtpSender;
 use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -18,17 +19,24 @@ use Illuminate\Validation\Rule;
 
 class OtpController extends Controller
 {
-    public function send(Request $request): JsonResponse
-    {
+    public function send(
+        Request $request,
+        WhatsAppOtpSender $whatsAppOtpSender,
+    ): JsonResponse {
         $validated = $request->validate([
             'phone_number' => ['required', 'string', 'regex:/^\+[1-9]\d{7,14}$/'],
         ]);
 
-        return $this->createOtpChallenge($validated['phone_number']);
+        return $this->createOtpChallenge(
+            $validated['phone_number'],
+            $whatsAppOtpSender,
+        );
     }
 
-    public function sendProfilePhoneOtp(Request $request): JsonResponse
-    {
+    public function sendProfilePhoneOtp(
+        Request $request,
+        WhatsAppOtpSender $whatsAppOtpSender,
+    ): JsonResponse {
         $validated = $request->validate([
             'phone_number' => [
                 'required',
@@ -38,13 +46,18 @@ class OtpController extends Controller
             ],
         ]);
 
-        return $this->createOtpChallenge($validated['phone_number']);
+        return $this->createOtpChallenge(
+            $validated['phone_number'],
+            $whatsAppOtpSender,
+        );
     }
 
-    private function createOtpChallenge(string $phoneNumber): JsonResponse
-    {
-        // This temporary sender is only for local development.
-        if (! app()->environment('local')) {
+    private function createOtpChallenge(
+        string $phoneNumber,
+        WhatsAppOtpSender $whatsAppOtpSender,
+    ): JsonResponse {
+        $useWhatsApp = $whatsAppOtpSender->isConfigured();
+        if (! $useWhatsApp && ! app()->environment('local')) {
             return response()->json([
                 'message' => 'WhatsApp delivery is not configured.',
             ], 503);
@@ -54,13 +67,34 @@ class OtpController extends Controller
 
         OtpChallenge::where('phone_number', $phoneNumber)->delete();
 
-        OtpChallenge::create([
+        $challenge = OtpChallenge::create([
             'phone_number' => $phoneNumber,
             'code_hash' => Hash::make($code),
             'attempts' => 0,
             'expires_at' => now()->addMinutes(5),
         ]);
 
+        if ($useWhatsApp) {
+            try {
+                $whatsAppOtpSender->send($phoneNumber, $code);
+            } catch (\RuntimeException $error) {
+                $challenge->delete();
+                Log::warning('WhatsApp OTP delivery failed.', [
+                    'exception' => $error::class,
+                ]);
+
+                return response()->json([
+                    'message' => 'Could not send a verification code. Please try again.',
+                ], 503);
+            }
+
+            return response()->json([
+                'message' => 'Verification code sent via WhatsApp.',
+                'expires_in' => 300,
+            ]);
+        }
+
+        // The local-only fallback keeps development usable without Meta credentials.
         Log::info('Local development OTP', [
             'phone_number' => $phoneNumber,
             'code' => $code,

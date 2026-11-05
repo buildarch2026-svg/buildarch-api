@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/project.dart';
 import '../models/project_document.dart';
+import '../models/project_member.dart';
 import '../models/project_message.dart';
 import '../navigation/profile_navigation.dart';
 import '../services/auth_api_service.dart';
@@ -10,7 +11,9 @@ import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 import '../widgets/app_bottom_nav.dart';
 import 'project_documents_screen.dart';
+import 'project_direct_chat_screen.dart';
 import 'project_group_voice_chat_screen.dart';
+import 'project_chats_screen.dart';
 
 class AllProjectFilesScreen extends StatefulWidget {
   const AllProjectFilesScreen({super.key, required this.returnProject});
@@ -72,10 +75,15 @@ class _AllProjectFilesScreenState extends State<AllProjectFilesScreen> {
               token: token,
               projectId: project.id,
             ),
+            AuthApiService.instance.getProjectDirectFiles(
+              token: token,
+              projectId: project.id,
+            ),
           ]);
           return (
             documents: results[0] as List<ProjectDocument>,
             messages: results[1] as List<ProjectMessage>,
+            directMessages: results[2] as List<(ProjectMessage, ProjectMember)>,
           );
         }),
       );
@@ -95,6 +103,15 @@ class _AllProjectFilesScreenState extends State<AllProjectFilesScreen> {
                 (message) => _ProjectFile.fromGroupMessage(
                   project: projects[index],
                   message: message,
+                ),
+              ),
+        );
+        files.addAll(
+          filesByProject[index].directMessages.map(
+                (entry) => _ProjectFile.fromDirectMessage(
+                  project: projects[index],
+                  message: entry.$1,
+                  member: entry.$2,
                 ),
               ),
         );
@@ -138,10 +155,23 @@ class _AllProjectFilesScreenState extends State<AllProjectFilesScreen> {
     );
   }
 
-  void _openProjectChat(Project project) {
+  void _openProjectChat(_ProjectFile file) {
+    final member = file.conversationMember;
+    if (member != null) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ProjectDirectChatScreen(
+            project: file.project,
+            member: member,
+            conversationMemberUserId: member.userId,
+          ),
+        ),
+      );
+      return;
+    }
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => ProjectGroupVoiceChatScreen(project: project),
+        builder: (_) => ProjectGroupVoiceChatScreen(project: file.project),
       ),
     );
   }
@@ -151,8 +181,7 @@ class _AllProjectFilesScreenState extends State<AllProjectFilesScreen> {
     if (tab == AppTab.chat) {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (_) =>
-              ProjectGroupVoiceChatScreen(project: widget.returnProject),
+          builder: (_) => const ProjectChatsScreen(),
         ),
       );
       return;
@@ -371,7 +400,7 @@ class _AllProjectFilesScreenState extends State<AllProjectFilesScreen> {
       child: InkWell(
         onTap: () => file.document != null
             ? _openProjectFiles(file.project)
-            : _openProjectChat(file.project),
+            : _openProjectChat(file),
         borderRadius: BorderRadius.circular(16),
         child: Container(
           padding: const EdgeInsets.all(12),
@@ -406,7 +435,9 @@ class _AllProjectFilesScreenState extends State<AllProjectFilesScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      file.project.name,
+                      file.conversationMember == null
+                          ? file.project.name
+                          : '${file.project.name} · Private chat with ${file.conversationMember!.name}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: AppTextStyles.bodySm.copyWith(
@@ -452,7 +483,8 @@ class _ProjectFile {
         createdAt = document.createdAt,
         messageType = 'document',
         isPdf = document.mimeType == 'application/pdf' ||
-            document.name.toLowerCase().endsWith('.pdf');
+            document.name.toLowerCase().endsWith('.pdf'),
+        conversationMember = null;
 
   _ProjectFile.fromGroupMessage({
     required this.project,
@@ -464,7 +496,22 @@ class _ProjectFile {
         uploadedBy = message.senderName,
         createdAt = message.createdAt,
         messageType = message.messageType,
-        isPdf = message.attachmentMimeType == 'application/pdf';
+        isPdf = message.attachmentMimeType == 'application/pdf',
+        conversationMember = null;
+
+  _ProjectFile.fromDirectMessage({
+    required this.project,
+    required ProjectMessage message,
+    required ProjectMember member,
+  })  : document = null,
+        messageId = message.id,
+        name = message.attachmentName ?? 'Attachment',
+        size = message.attachmentSize ?? 0,
+        uploadedBy = message.senderName,
+        createdAt = message.createdAt,
+        messageType = message.messageType,
+        isPdf = message.attachmentMimeType == 'application/pdf',
+        conversationMember = member;
 
   final Project project;
   final ProjectDocument? document;
@@ -475,4 +522,5 @@ class _ProjectFile {
   final DateTime? createdAt;
   final String messageType;
   final bool isPdf;
+  final ProjectMember? conversationMember;
 }

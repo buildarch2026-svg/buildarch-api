@@ -105,6 +105,23 @@ Authenticated clients request a profile phone verification code with
 per-account rate limit separate from the unauthenticated phone sign-in OTP
 limit. A phone number already assigned to another account cannot be attached.
 
+## WhatsApp OTP delivery
+
+Configure `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`,
+`WHATSAPP_OTP_TEMPLATE`, and `WHATSAPP_OTP_TEMPLATE_LANGUAGE` in the API
+environment. Create and get approval for a WhatsApp **Authentication**
+template with an OTP copy-code button; the configured template name and
+language must exactly match the approved template. The API sends the generated
+six-digit code in the body and OTP button parameters. The code expires after
+five minutes. WhatsApp credentials must remain server-side and must not be
+committed to source control. See Meta's [authentication template guide](https://developers.facebook.com/documentation/business-messaging/whatsapp/templates/authentication-templates/copy-code-button-authentication-templates).
+
+Both `POST /api/auth/otp/request` and the authenticated profile phone request
+send codes through WhatsApp when these settings are present. In local
+development only, an unconfigured sender falls back to writing a test code to
+the Laravel log. A configured delivery failure returns a service-unavailable
+response and invalidates the newly created challenge.
+
 ## Shared project files
 
 Authenticated project owners and accepted members can list and download files:
@@ -157,6 +174,20 @@ Notifications are stored per recipient and include unread state; run
 shows them from the notification bell on the Projects and Project Dashboard
 screens.
 
+## Firebase chat push notifications
+
+Authenticated devices register their FCM token with `POST /api/push-tokens`
+and remove it with `DELETE /api/push-tokens`. Tokens are encrypted at rest and
+uniquely associated with one account; sign-out removes the current device
+token. Chat notifications are queued on the `notifications` queue and sent
+through Firebase Cloud Messaging HTTP v1. Configure `FIREBASE_PROJECT_ID` and
+`FIREBASE_CREDENTIALS` in the API environment, where the latter is an absolute
+path to a server-only service-account JSON file. Keep that file outside source
+control. Run `php artisan migrate --force` and a queue worker listening on
+`notifications,default`. If Firebase credentials are unavailable, chat and
+database notifications continue to work and the API logs the push
+configuration/delivery failure.
+
 ## Project lifecycle and team access
 
 After deploying the project lifecycle API, run
@@ -176,5 +207,16 @@ Only the project owner can remove an accepted member with
 access to project APIs immediately; historical messages and transactions are
 retained for the project. Archived and deleted projects reject project-scoped
 requests and do not accept invitations until the owner restores them.
+
+## Project payment transaction retries
+
+`POST /api/projects/{project}/transactions` accepts an optional `attempt_id`.
+Callers should reuse the same ID when retrying a request whose outcome is
+unknown. Replaying an ID for the same payer, project, and transaction details
+returns the existing transaction with HTTP 200 instead of creating a duplicate;
+the original current status and provider reference are preserved. Reusing an ID
+with different transaction details, payer, or project returns HTTP 409. The
+first successful request returns HTTP 201. Requests without an `attempt_id`
+are not idempotent.
 
 The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).

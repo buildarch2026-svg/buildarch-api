@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Project;
 use App\Models\ProjectTransaction;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -46,7 +47,7 @@ class ProjectTransactionController extends Controller
             'qr_payload' => ['nullable', 'string', 'max:2000'],
         ]);
 
-        $transaction = $project->transactions()->create([
+        $attributes = [
             'payer_user_id' => $request->user()->id,
             'payee_name' => $validated['payee_name'],
             'payee_type' => $validated['payee_type'] ?? 'shop',
@@ -61,11 +62,31 @@ class ProjectTransactionController extends Controller
             'provider_reference' => $validated['provider_reference'] ?? null,
             'attempt_id' => $validated['attempt_id'] ?? null,
             'qr_payload' => $validated['qr_payload'] ?? null,
-        ])->load('payer:id,name');
+        ];
 
-        return response()->json([
-            'transaction' => $this->transactionResponse($transaction),
-        ], 201);
+        if ($attributes['attempt_id'] !== null) {
+            $existing = ProjectTransaction::where('attempt_id', $attributes['attempt_id'])->first();
+            if ($existing !== null) {
+                return $this->respondToExistingAttempt($existing, $project, $attributes);
+            }
+        }
+
+        try {
+            $transaction = $project->transactions()->create($attributes)->load('payer:id,name');
+        } catch (QueryException $exception) {
+            if ($attributes['attempt_id'] === null) {
+                throw $exception;
+            }
+
+            $existing = ProjectTransaction::where('attempt_id', $attributes['attempt_id'])->first();
+            if ($existing === null) {
+                throw $exception;
+            }
+
+            return $this->respondToExistingAttempt($existing, $project, $attributes);
+        }
+
+        return response()->json(['transaction' => $this->transactionResponse($transaction)], 201);
     }
 
     public function updateStatus(
@@ -101,6 +122,38 @@ class ProjectTransactionController extends Controller
         $isMember = $project->members()->where('user_id', $user->id)->exists();
 
         abort_unless($isOwner || $isMember, 403);
+    }
+
+    private function respondToExistingAttempt(
+        ProjectTransaction $existing,
+        Project $project,
+        array $attributes,
+    ): JsonResponse {
+        $matches = (int) $existing->project_id === (int) $project->id
+            && (int) $existing->payer_user_id === (int) $attributes['payer_user_id']
+            && $existing->payee_name === $attributes['payee_name']
+            && $existing->payee_type === $attributes['payee_type']
+            && $existing->payee_vpa === $attributes['payee_vpa']
+            && number_format((float) $existing->amount, 2, '.', '')
+                === number_format((float) $attributes['amount'], 2, '.', '')
+            && $existing->currency === $attributes['currency']
+            && $existing->payment_method === $attributes['payment_method']
+            && $existing->payment_type === $attributes['payment_type']
+            && $existing->description === $attributes['description']
+            && $existing->category === $attributes['category']
+            && $existing->qr_payload === $attributes['qr_payload'];
+
+        if (! $matches) {
+            return response()->json([
+                'message' => 'This attempt ID has already been used for a different transaction.',
+            ], 409);
+        }
+
+        $existing->load('payer:id,name');
+
+        return response()->json([
+            'transaction' => $this->transactionResponse($existing),
+        ]);
     }
 
     private function transactionResponse(ProjectTransaction $transaction): array

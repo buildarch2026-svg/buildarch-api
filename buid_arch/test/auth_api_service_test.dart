@@ -171,6 +171,42 @@ void main() {
     }
   });
 
+  test('push token registration and removal use authenticated JSON requests',
+      () async {
+    final client = _RecordingClient();
+    final service = _testService(client);
+
+    await service.registerPushToken(
+      token: 'test-session-token',
+      firebaseToken: 'fcm-device-token-0123456789abcdef',
+      platform: 'android',
+    );
+    await service.removePushToken(
+      token: 'test-session-token',
+      firebaseToken: 'fcm-device-token-0123456789abcdef',
+    );
+
+    expect(
+      client.requests.map((request) => '${request.method} ${request.url.path}'),
+      ['POST /api/push-tokens', 'DELETE /api/push-tokens'],
+    );
+    final registerBody = jsonDecode(
+      (client.requests.first as http.Request).body,
+    ) as Map<String, dynamic>;
+    expect(registerBody, {
+      'token': 'fcm-device-token-0123456789abcdef',
+      'platform': 'android',
+    });
+    final removeRequest = client.requests.last as http.Request;
+    expect(
+      jsonDecode(removeRequest.body),
+      {'token': 'fcm-device-token-0123456789abcdef'},
+    );
+    for (final request in client.requests) {
+      expect(_authorizationHeader(request), 'Bearer test-session-token');
+    }
+  });
+
   test('OTP request sends a normalized phone number to the correct endpoint',
       () async {
     final client = _RecordingClient();
@@ -345,6 +381,202 @@ void main() {
       ),
     );
   });
+
+  test('HTTP errors without a JSON message include the response status',
+      () async {
+    final service = _testService(
+      _RecordingClient(
+        statusCode: 500,
+        responseText: '<html>Internal Server Error</html>',
+      ),
+    );
+
+    await expectLater(
+      service.requestOtp('+14155552671'),
+      throwsA(
+        isA<AuthApiException>()
+            .having((error) => error.statusCode, 'statusCode', 500)
+            .having(
+              (error) => error.message,
+              'message',
+              'The server returned an unexpected response (HTTP 500). '
+                  'Please try again.',
+            ),
+      ),
+    );
+  });
+
+  test('chat inbox and read-channel APIs use the authenticated session',
+      () async {
+    final client = _RecordingClient(
+      responseBody: {
+        'auth': 'signed-channel-auth',
+        'chats': [
+          {
+            'id': 'group:8:group',
+            'type': 'group',
+            'conversation_id': 2,
+            'participant_user_id': null,
+            'project_id': 8,
+            'project_name': 'Kitchen renovation',
+            'project_location': 'Kochi',
+            'project_type': 'renovation',
+            'project_latitude': 9.9,
+            'project_longitude': 76.2,
+            'is_owner': true,
+            'name': 'Kitchen renovation Team',
+            'counterpart_user_id': null,
+            'counterpart_role': null,
+            'counterpart_designation': null,
+            'last_message': null,
+            'last_message_at': null,
+            'unread_count': 0,
+          },
+          {
+            'id': 'direct:8:14',
+            'type': 'direct',
+            'conversation_id': 3,
+            'participant_user_id': 14,
+            'project_id': 8,
+            'project_name': 'Kitchen renovation',
+            'project_location': 'Kochi',
+            'project_type': 'renovation',
+            'project_latitude': 9.9,
+            'project_longitude': 76.2,
+            'is_owner': true,
+            'name': 'Project Designer',
+            'counterpart_user_id': 14,
+            'counterpart_role': 'designer',
+            'counterpart_designation': 'Interior Designer',
+            'last_message': {
+              'body': 'I will update the drawing.',
+              'message_type': 'text',
+            },
+            'last_message_at': '2026-11-02T10:00:00+00:00',
+            'unread_count': 2,
+          },
+        ],
+      },
+    );
+    final service = _testService(client);
+
+    final chats = await service.getChats(token: 'test-session-token');
+    expect(chats, hasLength(2));
+    expect(chats.first.projectName, 'Kitchen renovation');
+    expect(chats.first.toProject().type, ProjectType.renovation);
+    expect(chats[1].toCounterpart().role, 'designer');
+    expect(chats[1].lastMessage, 'I will update the drawing.');
+
+    final auth = await service.authenticateChatChannel(
+      token: 'test-session-token',
+      socketId: '123.456',
+      channelName: 'private-project-chat.group.8',
+    );
+    expect(auth['auth'], 'signed-channel-auth');
+    await service.markProjectGroupChatRead(
+      token: 'test-session-token',
+      projectId: '8',
+    );
+    await service.markDirectChatRead(
+      token: 'test-session-token',
+      projectId: '8',
+      memberUserId: 14,
+    );
+
+    expect(
+      client.requests.map((request) => '${request.method} ${request.url.path}'),
+      [
+        'GET /api/chats',
+        'POST /api/broadcasting/auth',
+        'POST /api/projects/8/group-chat/read',
+        'POST /api/projects/8/members/14/messages/read',
+      ],
+    );
+    for (final request in client.requests) {
+      expect(_authorizationHeader(request), startsWith('Bearer '));
+    }
+    final authBody = jsonDecode(
+      (client.requests[1] as http.Request).body,
+    ) as Map<String, dynamic>;
+    expect(authBody, {
+      'socket_id': '123.456',
+      'channel_name': 'private-project-chat.group.8',
+    });
+  });
+
+  test('forwarding a chat message sends source and target conversations',
+      () async {
+    final client = _RecordingClient(
+      responseBody: {
+        'message': {
+          'id': 42,
+          'body': 'Review the plan',
+          'message_type': 'text',
+          'sender_user_id': 12,
+          'sender_name': 'Home Owner',
+          'forwarded_from_name': 'Designer',
+        },
+      },
+    );
+    final service = _testService(client);
+
+    final message = await service.forwardChatMessage(
+      token: 'test-session-token',
+      projectId: '8',
+      sourceType: 'direct',
+      sourceMessageId: 31,
+      sourceMemberUserId: 14,
+      targetType: 'group',
+    );
+
+    expect(message.forwardedFromName, 'Designer');
+    final request = client.requests.single as http.Request;
+    expect(request.url.path, '/api/projects/8/chat/forward');
+    expect(jsonDecode(request.body), {
+      'source_type': 'direct',
+      'source_message_id': 31,
+      'source_member_user_id': 14,
+      'target_type': 'group',
+    });
+    expect(_authorizationHeader(request), startsWith('Bearer '));
+  });
+
+  test('private chat files include the authorized conversation participant',
+      () async {
+    final client = _RecordingClient(
+      responseBody: {
+        'files': [
+          {
+            'id': 42,
+            'body': null,
+            'message_type': 'image',
+            'attachment_name': 'design.jpg',
+            'attachment_mime_type': 'image/jpeg',
+            'attachment_size': 2048,
+            'sender_user_id': 14,
+            'sender_name': 'Designer',
+            'created_at': '2026-11-05T12:00:00Z',
+            'conversation_member': {
+              'user_id': 14,
+              'name': 'Designer',
+              'role': 'designer',
+            },
+          },
+        ],
+      },
+    );
+    final files = await _testService(client).getProjectDirectFiles(
+      token: 'test-session-token',
+      projectId: '8',
+    );
+
+    expect(files, hasLength(1));
+    expect(files.single.$1.attachmentName, 'design.jpg');
+    expect(files.single.$2.userId, 14);
+    final request = client.requests.single as http.Request;
+    expect(request.url.path, '/api/projects/8/chat/files');
+    expect(_authorizationHeader(request), startsWith('Bearer '));
+  });
 }
 
 AuthApiService _testService(http.Client client) => AuthApiService(
@@ -365,18 +597,20 @@ class _RecordingClient extends http.BaseClient {
   _RecordingClient({
     this.statusCode = 200,
     this.responseBody = const {},
+    this.responseText,
     this.responseHeaders = const {},
   });
 
   final int statusCode;
   final Map<String, dynamic> responseBody;
+  final String? responseText;
   final Map<String, String> responseHeaders;
   final requests = <http.BaseRequest>[];
 
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
     requests.add(request);
-    final body = utf8.encode(jsonEncode(responseBody));
+    final body = utf8.encode(responseText ?? jsonEncode(responseBody));
     return http.StreamedResponse(
       Stream.value(body),
       statusCode,

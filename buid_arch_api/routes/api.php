@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\Auth\OtpController;
 use App\Http\Controllers\Api\NotificationController;
+use App\Http\Controllers\Api\ProjectChatController;
 use App\Http\Controllers\Api\ProjectController;
 use App\Http\Controllers\Api\ProjectDocumentController;
 use App\Http\Controllers\Api\ProjectGroupChatController;
@@ -9,10 +10,14 @@ use App\Http\Controllers\Api\ProjectInvitationController;
 use App\Http\Controllers\Api\ProjectMemberController;
 use App\Http\Controllers\Api\ProjectMessageController;
 use App\Http\Controllers\Api\ProjectTransactionController;
+use App\Http\Controllers\Api\PushTokenController;
 use App\Http\Controllers\Api\UserProfileController;
 use App\Http\Controllers\Api\WhatsAppTestController;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
+
+Broadcast::routes(['middleware' => ['auth:sanctum']]);
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -22,6 +27,10 @@ Route::patch('/user/profile', [UserProfileController::class, 'update'])
     ->middleware('auth:sanctum');
 
 Route::middleware('auth:sanctum')->group(function () {
+    Route::post('/push-tokens', [PushTokenController::class, 'store'])
+        ->middleware('throttle:30,1');
+    Route::delete('/push-tokens', [PushTokenController::class, 'destroy'])
+        ->middleware('throttle:30,1');
     Route::post('/auth/logout', function (Request $request) {
         $request->user()->currentAccessToken()->delete();
 
@@ -29,6 +38,8 @@ Route::middleware('auth:sanctum')->group(function () {
             'message' => 'Signed out successfully.',
         ]);
     });
+    Route::get('/chats', [ProjectChatController::class, 'index'])
+        ->middleware('throttle:60,1');
     Route::get('/notifications', [NotificationController::class, 'index'])
         ->middleware('throttle:60,1');
     Route::post('/notifications/{notificationId}/read', [NotificationController::class, 'markRead'])
@@ -47,15 +58,37 @@ Route::middleware('auth:sanctum')->group(function () {
     )->whereNumber('memberUserId')->middleware('project.active');
 
     Route::middleware('project.active')->group(function () {
+        Route::post(
+            '/projects/{project}/chat/forward',
+            [ProjectChatController::class, 'forward'],
+        )->middleware('throttle:30,1');
         Route::post('/projects/{project}/photo', [ProjectController::class, 'updatePhoto'])
             ->middleware('throttle:10,1');
         Route::get('/projects/{project}/group-chat', [ProjectGroupChatController::class, 'index'])
             ->middleware('throttle:60,1');
         Route::get('/projects/{project}/group-chat/files', [ProjectGroupChatController::class, 'files'])
             ->middleware('throttle:30,1');
+        Route::get('/projects/{project}/chat/files', [ProjectMessageController::class, 'files'])
+            ->middleware('throttle:30,1');
         Route::post(
             '/projects/{project}/group-chat/messages',
             [ProjectGroupChatController::class, 'storeText'],
+        )->middleware('throttle:30,1');
+        Route::patch(
+            '/projects/{project}/group-chat/messages/{message}',
+            [ProjectGroupChatController::class, 'updateMessage'],
+        )->whereNumber('message')->middleware('throttle:30,1');
+        Route::delete(
+            '/projects/{project}/group-chat/messages/{message}',
+            [ProjectGroupChatController::class, 'deleteMessage'],
+        )->whereNumber('message')->middleware('throttle:30,1');
+        Route::post(
+            '/projects/{project}/group-chat/read',
+            [ProjectGroupChatController::class, 'markRead'],
+        )->middleware('throttle:60,1');
+        Route::post(
+            '/projects/{project}/group-chat/location',
+            [ProjectGroupChatController::class, 'storeLocation'],
         )->middleware('throttle:30,1');
         Route::post(
             '/projects/{project}/group-chat/voice',
@@ -84,6 +117,22 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post(
             '/projects/{project}/members/{memberUserId}/messages',
             [ProjectMessageController::class, 'store'],
+        )->whereNumber('memberUserId')->middleware('throttle:30,1');
+        Route::patch(
+            '/projects/{project}/members/{memberUserId}/messages/{message}',
+            [ProjectMessageController::class, 'updateMessage'],
+        )->whereNumber('memberUserId')->whereNumber('message')->middleware('throttle:30,1');
+        Route::delete(
+            '/projects/{project}/members/{memberUserId}/messages/{message}',
+            [ProjectMessageController::class, 'deleteMessage'],
+        )->whereNumber('memberUserId')->whereNumber('message')->middleware('throttle:30,1');
+        Route::post(
+            '/projects/{project}/members/{memberUserId}/messages/read',
+            [ProjectMessageController::class, 'markRead'],
+        )->whereNumber('memberUserId')->middleware('throttle:60,1');
+        Route::post(
+            '/projects/{project}/members/{memberUserId}/messages/location',
+            [ProjectMessageController::class, 'storeLocation'],
         )->whereNumber('memberUserId')->middleware('throttle:30,1');
         Route::post(
             '/projects/{project}/members/{memberUserId}/messages/attachments',

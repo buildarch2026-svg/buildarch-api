@@ -8,6 +8,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class ProjectController extends Controller
 {
@@ -47,8 +48,8 @@ class ProjectController extends Controller
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'location' => ['required', 'string', 'max:255'],
-            'latitude' => ['nullable', 'required_with:longitude', 'numeric', 'between:-90,90'],
-            'longitude' => ['nullable', 'required_with:latitude', 'numeric', 'between:-180,180'],
+            'latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'longitude' => ['nullable', 'numeric', 'between:-180,180'],
             'type' => [
                 'required',
                 Rule::in([
@@ -59,6 +60,7 @@ class ProjectController extends Controller
             ],
             'photo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
         ]);
+        $this->validateCoordinatePair($request);
 
         $imagePath = $request->file('photo')?->store('projects', 'public');
         if ($request->hasFile('photo') && $imagePath === false) {
@@ -84,8 +86,8 @@ class ProjectController extends Controller
         $validated = $request->validate([
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'location' => ['sometimes', 'required', 'string', 'max:255'],
-            'latitude' => ['sometimes', 'nullable', 'required_with:longitude', 'numeric', 'between:-90,90'],
-            'longitude' => ['sometimes', 'nullable', 'required_with:latitude', 'numeric', 'between:-180,180'],
+            'latitude' => ['sometimes', 'nullable', 'numeric', 'between:-90,90'],
+            'longitude' => ['sometimes', 'nullable', 'numeric', 'between:-180,180'],
             'type' => [
                 'sometimes',
                 'required',
@@ -96,12 +98,39 @@ class ProjectController extends Controller
                 ]),
             ],
         ]);
+        $this->validateCoordinatePair($request);
 
         $project->update($validated);
 
         return response()->json([
             'project' => $this->projectResponse($project->refresh(), $request),
         ]);
+    }
+
+    private function validateCoordinatePair(Request $request): void
+    {
+        $hasLatitude = $request->exists('latitude');
+        $hasLongitude = $request->exists('longitude');
+        if ($hasLatitude !== $hasLongitude) {
+            $errors = [];
+            if (! $hasLatitude) {
+                $errors['latitude'] = 'Latitude and longitude must be provided together.';
+            }
+            if (! $hasLongitude) {
+                $errors['longitude'] = 'Latitude and longitude must be provided together.';
+            }
+
+            throw ValidationException::withMessages($errors);
+        }
+
+        if ($hasLatitude
+            && (($request->input('latitude') === null)
+                !== ($request->input('longitude') === null))) {
+            throw ValidationException::withMessages([
+                'latitude' => 'Both coordinates must be numbers or both must be null.',
+                'longitude' => 'Both coordinates must be numbers or both must be null.',
+            ]);
+        }
     }
 
     public function archive(Request $request, Project $project): JsonResponse

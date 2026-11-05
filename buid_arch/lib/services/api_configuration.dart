@@ -35,6 +35,45 @@ class ApiConfiguration {
         .resolve(normalizedPath);
   }
 
+  Uri resolveChatSocket({
+    required String appKey,
+    String? host,
+    int? port,
+    String? scheme,
+  }) {
+    final apiUri = _parseBaseUrl(_baseUrl, requireHttps: _requireHttps);
+    final socketScheme =
+        scheme?.trim().isNotEmpty == true ? scheme!.trim() : apiUri.scheme;
+    final normalizedScheme = switch (socketScheme) {
+      'http' => 'ws',
+      'https' => 'wss',
+      'ws' || 'wss' => socketScheme,
+      _ => throw const ApiConfigurationException(
+          'The chat WebSocket scheme must be ws, wss, http, or https.',
+        ),
+    };
+    final socketHost =
+        host?.trim().isNotEmpty == true ? host!.trim() : apiUri.host;
+    if (socketHost.isEmpty || appKey.trim().isEmpty) {
+      throw const ApiConfigurationException(
+        'The chat WebSocket host and Reverb application key are required.',
+      );
+    }
+
+    return Uri(
+      scheme: normalizedScheme,
+      host: socketHost,
+      port: port ?? (normalizedScheme == 'wss' ? 443 : 8080),
+      path: '/app/${Uri.encodeComponent(appKey.trim())}',
+      queryParameters: const {
+        'protocol': '7',
+        'client': 'js',
+        'version': '8.4.0',
+        'flash': 'false',
+      },
+    );
+  }
+
   static Uri _parseBaseUrl(String value, {required bool requireHttps}) {
     final baseUrl = value.trim();
     if (baseUrl.isEmpty) {

@@ -62,7 +62,7 @@ class ProfileNavigation {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Signed out on this device, but could not revoke the server session.',
+            'Signed out on this device, but could not revoke all server access.',
           ),
         ),
       );

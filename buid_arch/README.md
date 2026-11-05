@@ -16,10 +16,11 @@ Flutter app folder:
     .\run_on_phone.ps1
 
 The launcher starts the local Laravel API if it is stopped, waits for it to
-respond, forwards the API port over ADB, verifies the forwarding, and passes
-the API URL and configured Google Web OAuth client ID to Flutter. The API
-listens only on the computer, and no computer Wi-Fi address needs to be
-hardcoded. Keep the USB/ADB connection active while using the local API; if it
+respond, starts Laravel Reverb if it is stopped, forwards both service ports
+over ADB, verifies forwarding, and passes the API URL, Reverb app key, and
+configured Google Web OAuth client ID to Flutter. The API and Reverb listen
+only on the computer, and no computer Wi-Fi address needs to be hardcoded.
+Keep the USB/ADB connection active while using the local services; if it
 disconnects, rerun the launcher to restore forwarding. Use
 `.\run_on_phone.ps1 -DeviceId <adb-serial>` if more than one Android device is
 connected.
@@ -97,11 +98,51 @@ Project owners and accepted members can upload and download shared project
 photos and PDFs from **All Files**. General project-file uploads are limited to
 100 MB. Files uploaded by a Designer are also categorized under **Drawings**.
 Files are private to authenticated project participants.
+Images and other attachments shared in the group chat are also listed in
+**All Files** for every project participant. Direct-chat attachments appear only
+for the owner and the member in that private conversation; opening one returns
+to that conversation.
 
-The project team page opens a private owner-to-member chat. Messages support
-text, images, PDFs, camera-captured photos, and voice notes up to five minutes.
-Chat attachments are limited to 25 MB per file. The chat refreshes by polling
-the API; push notifications are not implemented.
+The **Chat** tab shows project group conversations and existing private
+owner-to-member conversations. Project team members can also open a private
+chat from the Project Team page. Chat supports text, replies, editing and
+deleting messages, images, PDFs, camera-captured photos, voice notes up to
+five minutes, and confirmed current-location sharing. Chat attachments are
+limited to 25 MB per file. Foreground messages are delivered through Laravel
+Reverb over private, authenticated project channels, with periodic API refresh
+as a fallback. Direct messages show read receipts; group messages show the
+reader count. Read state and unread counts are persisted by the API. Push
+notifications use Firebase Cloud Messaging on Android and iOS. The app asks for
+notification permission after sign-in, registers and refreshes its device
+token, displays foreground alerts, and opens the chat inbox when a chat push is
+tapped.
+
+Long-press a message to reply or forward it. Swipe right on a message to reply
+quickly. Forwarded messages can be sent to the project group and one or more
+private project chats; forwarded attachments are copied into the destination
+conversation and retain the original sender attribution.
+
+For local chat development, `run_on_phone.ps1` starts the API and Reverb
+servers, then forwards ports 8000 and 8080 to the connected phone. Configure
+`BROADCAST_CONNECTION=reverb` and the Reverb application key/secret in the API
+`.env` file. Generate Reverb credentials with `php artisan reverb:install` if
+they are not already present. Apply the chat migration from `buid_arch_api`
+with `php artisan migrate --force`. The mobile app uses the Reverb application
+key only; do not put the Reverb secret in Flutter or commit it to source.
+
+To enable push, register the Android app (`com.example.buid_arch`) and iOS app
+(`com.buidarch.buidArch`) in the Firebase project. Put the client values
+(`FIREBASE_PROJECT_ID`, `FIREBASE_API_KEY`, `FIREBASE_MESSAGING_SENDER_ID`,
+`FIREBASE_ANDROID_APP_ID`, and `FIREBASE_IOS_APP_ID`) in the API `.env`;
+`run_on_phone.ps1` passes only these public values to Flutter. For the API,
+enable the Firebase Cloud Messaging API, create a service account with FCM send
+permission, and set `FIREBASE_CREDENTIALS` to the absolute path of its JSON
+key. Never commit or pass that private key to the Flutter app. iOS also needs
+an APNs authentication key configured in Firebase and the Push Notifications
+capability enabled for the app's signing profile. Run `php artisan migrate
+--force` and keep a queue worker running with
+`php artisan queue:work --queue=notifications,default --tries=3`; the phone
+launcher starts a local worker when the queue connection is not `sync`.
 
 When creating a project with the device-location or map-selection button, its
 coordinates are saved with the project. Map tiles are provided by OpenStreetMap

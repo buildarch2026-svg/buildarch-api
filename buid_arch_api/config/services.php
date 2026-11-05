@@ -39,8 +39,14 @@ return [
         'phone_number_id' => env('WHATSAPP_PHONE_NUMBER_ID'),
         'business_account_id' => env('WHATSAPP_BUSINESS_ACCOUNT_ID'),
         'graph_api_version' => env('WHATSAPP_GRAPH_API_VERSION', 'v26.0'),
+        'otp_template' => env('WHATSAPP_OTP_TEMPLATE'),
+        'otp_template_language' => env('WHATSAPP_OTP_TEMPLATE_LANGUAGE', 'en_US'),
     ],
     'google' => [
         'client_id' => env('GOOGLE_WEB_CLIENT_ID'),
+    ],
+    'firebase' => [
+        'project_id' => env('FIREBASE_PROJECT_ID'),
+        'credentials' => env('FIREBASE_CREDENTIALS'),
     ],
 ];

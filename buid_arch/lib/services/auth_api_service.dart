@@ -8,10 +8,11 @@ import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
 import '../models/project.dart';
+import '../models/project_chat_conversation.dart';
 import '../models/project_document.dart';
 import '../models/project_invitation.dart';
-import '../models/project_message.dart';
 import '../models/project_member.dart';
+import '../models/project_message.dart';
 import '../models/project_notification.dart';
 import '../models/project_transaction.dart';
 import '../models/project_type.dart';
@@ -124,6 +125,32 @@ class AuthApiService {
       '/auth/logout',
       const {},
       headers: {'Authorization': 'Bearer $token'},
+    );
+  }
+
+  Future<void> registerPushToken({
+    required String token,
+    required String firebaseToken,
+    required String platform,
+  }) async {
+    await _post(
+      '/push-tokens',
+      {
+        'token': firebaseToken,
+        'platform': platform,
+      },
+      headers: {'Authorization': 'Bearer $token'},
+    );
+  }
+
+  Future<void> removePushToken({
+    required String token,
+    required String firebaseToken,
+  }) async {
+    await _delete(
+      '/push-tokens',
+      headers: {'Authorization': 'Bearer $token'},
+      body: {'token': firebaseToken},
     );
   }
 
@@ -383,10 +410,11 @@ class AuthApiService {
     required String projectId,
     required int memberUserId,
     int afterId = 0,
+    int beforeId = 0,
   }) async {
     final response = await _get(
       '/projects/$projectId/members/$memberUserId/messages'
-      '?after_id=$afterId',
+      '?after_id=$afterId&before_id=$beforeId',
       headers: {'Authorization': 'Bearer $token'},
     );
     final messages = response['messages'];
@@ -409,9 +437,10 @@ class AuthApiService {
     required String token,
     required String projectId,
     int afterId = 0,
+    int beforeId = 0,
   }) async {
     final response = await _get(
-      '/projects/$projectId/group-chat?after_id=$afterId',
+      '/projects/$projectId/group-chat?after_id=$afterId&before_id=$beforeId',
       headers: {'Authorization': 'Bearer $token'},
     );
     final messages = response['messages'];
@@ -427,6 +456,199 @@ class AuthApiService {
           'The group chat message response was invalid.',
         );
       }).toList();
+    } on FormatException catch (error) {
+      throw AuthApiException(error.message);
+    }
+  }
+
+  Future<List<ProjectChatConversation>> getChats({
+    required String token,
+  }) async {
+    final response = await _get('/chats', headers: {
+      'Authorization': 'Bearer $token',
+    });
+    final chats = response['chats'];
+    if (chats is! List) {
+      throw const AuthApiException('The chat list response was invalid.');
+    }
+    try {
+      return chats.map((chat) {
+        if (chat is Map) {
+          return ProjectChatConversation.fromJson(
+            Map<String, dynamic>.from(chat),
+          );
+        }
+        throw const FormatException('The chat list response was invalid.');
+      }).toList();
+    } on FormatException catch (error) {
+      throw AuthApiException(error.message);
+    }
+  }
+
+  Future<ProjectMessage> forwardChatMessage({
+    required String token,
+    required String projectId,
+    required String sourceType,
+    required int sourceMessageId,
+    required String targetType,
+    int? sourceMemberUserId,
+    int? targetMemberUserId,
+  }) async {
+    final response = await _post(
+      '/projects/$projectId/chat/forward',
+      {
+        'source_type': sourceType,
+        'source_message_id': sourceMessageId,
+        if (sourceMemberUserId != null)
+          'source_member_user_id': sourceMemberUserId,
+        'target_type': targetType,
+        if (targetMemberUserId != null)
+          'target_member_user_id': targetMemberUserId,
+      },
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    return _parseChatMessage(response);
+  }
+
+  Future<void> markProjectGroupChatRead({
+    required String token,
+    required String projectId,
+  }) async {
+    await _post(
+      '/projects/$projectId/group-chat/read',
+      const {},
+      headers: {'Authorization': 'Bearer $token'},
+    );
+  }
+
+  Future<void> markDirectChatRead({
+    required String token,
+    required String projectId,
+    required int memberUserId,
+  }) async {
+    await _post(
+      '/projects/$projectId/members/$memberUserId/messages/read',
+      const {},
+      headers: {'Authorization': 'Bearer $token'},
+    );
+  }
+
+  Future<Map<String, dynamic>> authenticateChatChannel({
+    required String token,
+    required String socketId,
+    required String channelName,
+  }) {
+    return _post(
+      '/broadcasting/auth',
+      {'socket_id': socketId, 'channel_name': channelName},
+      headers: {'Authorization': 'Bearer $token'},
+    );
+  }
+
+  Future<ProjectMessage> sendProjectGroupLocation({
+    required String token,
+    required String projectId,
+    required double latitude,
+    required double longitude,
+    required String address,
+    int? replyToMessageId,
+  }) async {
+    final response = await _post(
+      '/projects/$projectId/group-chat/location',
+      {
+        'latitude': latitude,
+        'longitude': longitude,
+        'address': address,
+        if (replyToMessageId != null) 'reply_to_message_id': replyToMessageId,
+      },
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    return _parseChatMessage(response);
+  }
+
+  Future<ProjectMessage> sendDirectLocation({
+    required String token,
+    required String projectId,
+    required int memberUserId,
+    required double latitude,
+    required double longitude,
+    required String address,
+    int? replyToMessageId,
+  }) async {
+    final response = await _post(
+      '/projects/$projectId/members/$memberUserId/messages/location',
+      {
+        'latitude': latitude,
+        'longitude': longitude,
+        'address': address,
+        if (replyToMessageId != null) 'reply_to_message_id': replyToMessageId,
+      },
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    return _parseChatMessage(response);
+  }
+
+  Future<ProjectMessage> updateProjectGroupMessage({
+    required String token,
+    required String projectId,
+    required int messageId,
+    required String body,
+  }) async {
+    final response = await _patch(
+      '/projects/$projectId/group-chat/messages/$messageId',
+      {'body': body},
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    return _parseChatMessage(response);
+  }
+
+  Future<ProjectMessage> deleteProjectGroupMessage({
+    required String token,
+    required String projectId,
+    required int messageId,
+  }) async {
+    final response = await _delete(
+      '/projects/$projectId/group-chat/messages/$messageId',
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    return _parseChatMessage(response);
+  }
+
+  Future<ProjectMessage> updateDirectMessage({
+    required String token,
+    required String projectId,
+    required int memberUserId,
+    required int messageId,
+    required String body,
+  }) async {
+    final response = await _patch(
+      '/projects/$projectId/members/$memberUserId/messages/$messageId',
+      {'body': body},
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    return _parseChatMessage(response);
+  }
+
+  Future<ProjectMessage> deleteDirectMessage({
+    required String token,
+    required String projectId,
+    required int memberUserId,
+    required int messageId,
+  }) async {
+    final response = await _delete(
+      '/projects/$projectId/members/$memberUserId/messages/$messageId',
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    return _parseChatMessage(response);
+  }
+
+  ProjectMessage _parseChatMessage(Map<String, dynamic> response) {
+    final message = response['message'];
+    if (message is! Map) {
+      throw const AuthApiException('The chat message response was invalid.');
+    }
+    try {
+      return ProjectMessage.fromJson(Map<String, dynamic>.from(message));
     } on FormatException catch (error) {
       throw AuthApiException(error.message);
     }
@@ -456,16 +678,53 @@ class AuthApiService {
     }
   }
 
+  Future<List<(ProjectMessage, ProjectMember)>> getProjectDirectFiles({
+    required String token,
+    required String projectId,
+  }) async {
+    final response = await _get(
+      '/projects/$projectId/chat/files',
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    final files = response['files'];
+    if (files is! List) {
+      throw const AuthApiException(
+          'The private chat files response was invalid.');
+    }
+    try {
+      return files.map((file) {
+        if (file is! Map) {
+          throw const FormatException(
+              'The private chat file response was invalid.');
+        }
+        final json = Map<String, dynamic>.from(file);
+        final member = json['conversation_member'];
+        if (member is! Map) {
+          throw const FormatException(
+              'The private chat participant was missing.');
+        }
+        return (
+          ProjectMessage.fromJson(json),
+          ProjectMember.fromJson(Map<String, dynamic>.from(member)),
+        );
+      }).toList();
+    } on FormatException catch (error) {
+      throw AuthApiException(error.message);
+    }
+  }
+
   Future<ProjectMessage> sendProjectGroupVoice({
     required String token,
     required String projectId,
     required File file,
+    int? replyToMessageId,
   }) {
     return sendProjectGroupAttachment(
       token: token,
       projectId: projectId,
       file: XFile(file.path),
       messageType: 'voice',
+      replyToMessageId: replyToMessageId,
     );
   }
 
@@ -474,6 +733,7 @@ class AuthApiService {
     required String projectId,
     required XFile file,
     required String messageType,
+    int? replyToMessageId,
   }) async {
     final size = await file.length();
     final uri = _apiUri('projects/$projectId/group-chat/attachments');
@@ -491,6 +751,9 @@ class AuthApiService {
           filename: file.name,
         ),
       );
+    if (replyToMessageId != null) {
+      request.fields['reply_to_message_id'] = '$replyToMessageId';
+    }
 
     try {
       final streamedResponse =
@@ -523,10 +786,14 @@ class AuthApiService {
     required String token,
     required String projectId,
     required String body,
+    int? replyToMessageId,
   }) async {
     final response = await _post(
       '/projects/$projectId/group-chat/messages',
-      {'body': body},
+      {
+        'body': body,
+        if (replyToMessageId != null) 'reply_to_message_id': replyToMessageId,
+      },
       headers: {'Authorization': 'Bearer $token'},
     );
     final message = response['message'];
@@ -556,10 +823,14 @@ class AuthApiService {
     required String projectId,
     required int memberUserId,
     required String body,
+    int? replyToMessageId,
   }) async {
     final response = await _post(
       '/projects/$projectId/members/$memberUserId/messages',
-      {'body': body},
+      {
+        'body': body,
+        if (replyToMessageId != null) 'reply_to_message_id': replyToMessageId,
+      },
       headers: {'Authorization': 'Bearer $token'},
     );
     final message = response['message'];
@@ -581,6 +852,7 @@ class AuthApiService {
     required String fileName,
     required int fileSize,
     required Stream<List<int>> fileBytes,
+    int? replyToMessageId,
   }) async {
     final uri = _apiUri(
       'projects/$projectId/members/$memberUserId/messages/attachments',
@@ -594,6 +866,9 @@ class AuthApiService {
       ..files.add(
         http.MultipartFile('file', fileBytes, fileSize, filename: fileName),
       );
+    if (replyToMessageId != null) {
+      request.fields['reply_to_message_id'] = '$replyToMessageId';
+    }
 
     try {
       final streamedResponse =
@@ -1174,18 +1449,23 @@ class AuthApiService {
   Future<Map<String, dynamic>> _delete(
     String path, {
     Map<String, String> headers = const {},
+    Map<String, dynamic>? body,
   }) async {
     final uri = _apiUri(path);
     late final http.Response response;
 
     try {
-      response = await _client.delete(
-        uri,
-        headers: {
-          'Accept': 'application/json',
-          ...headers,
-        },
-      ).timeout(_timeout);
+      response = await _client
+          .delete(
+            uri,
+            headers: {
+              'Accept': 'application/json',
+              if (body != null) 'Content-Type': 'application/json',
+              ...headers,
+            },
+            body: body == null ? null : jsonEncode(body),
+          )
+          .timeout(_timeout);
     } on SocketException {
       throw const AuthApiException(
         'Cannot reach the API. Check that Laravel is running and the API URL is correct.',
@@ -1216,7 +1496,7 @@ class AuthApiService {
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw AuthApiException(
-        _messageFrom(data),
+        _messageFrom(data, statusCode: response.statusCode),
         statusCode: response.statusCode,
         retryAfterSeconds: int.tryParse(response.headers['retry-after'] ?? ''),
       );
@@ -1233,7 +1513,10 @@ class AuthApiService {
     return normalized;
   }
 
-  String _messageFrom(Map<String, dynamic> data) {
+  String _messageFrom(
+    Map<String, dynamic> data, {
+    required int statusCode,
+  }) {
     final errors = data['errors'];
     if (errors is Map<String, dynamic>) {
       for (final value in errors.values) {
@@ -1243,6 +1526,7 @@ class AuthApiService {
 
     final message = data['message'];
     if (message is String && message.isNotEmpty) return message;
-    return 'The request failed. Please try again.';
+    return 'The server returned an unexpected response (HTTP $statusCode). '
+        'Please try again.';
   }
 }

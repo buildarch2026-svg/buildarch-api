@@ -2,19 +2,27 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Events\ProjectChatMessageChanged;
 use App\Http\Controllers\Controller;
 use App\Models\Project;
 use App\Models\ProjectConversation;
 use App\Models\ProjectMessage;
 use App\Models\User;
 use App\Notifications\ProjectActivityNotification;
+use App\Services\FirebasePushService;
+use App\Services\ProjectChatMessageSerializer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class ProjectMessageController extends Controller
 {
+    public function __construct(
+        private readonly FirebasePushService $firebasePushService,
+    ) {}
+
     public function index(
         Request $request,
         Project $project,
@@ -26,19 +34,103 @@ class ProjectMessageController extends Controller
             $memberUserId,
         );
         $afterId = max(0, (int) $request->query('after_id', 0));
+        $beforeId = max(0, (int) $request->query('before_id', 0));
 
-        $query = $conversation->messages()->with('sender:id,name');
-        $messages = $afterId === 0
-            ? $query->latest('id')->limit(100)->get()->reverse()
-            : $query->where('id', '>', $afterId)->oldest('id')->limit(100)->get();
-        $messages = $messages
-            ->values()
-            ->map(fn (ProjectMessage $message) => $this->messageResponse($message));
+        $query = $conversation->messages()
+            ->with(['sender:id,name,role', 'replyTo.sender:id,name,role']);
+        if ($beforeId > 0) {
+            $messages = $query->where('id', '<', $beforeId)
+                ->latest('id')
+                ->limit(100)
+                ->get()
+                ->reverse()
+                ->values();
+        } elseif ($afterId > 0) {
+            $messages = $query->where('id', '>', $afterId)
+                ->oldest('id')
+                ->limit(100)
+                ->get();
+        } else {
+            $messages = $query->latest('id')
+                ->limit(100)
+                ->get()
+                ->reverse()
+                ->values();
+        }
+        $members = ProjectChatMessageSerializer::projectMembers($project);
+        $readReceipts = ProjectChatMessageSerializer::readReceipts(
+            $project,
+            'direct',
+            $conversation->id,
+        );
 
         return response()->json([
-            'messages' => $messages,
+            'messages' => $messages->map(fn (ProjectMessage $message) => ProjectChatMessageSerializer::serialize(
+                $message,
+                $project,
+                $members,
+                $readReceipts,
+            )
+            ),
             'last_message_id' => $conversation->messages()->max('id') ?? 0,
+            'has_more' => $messages->count() === 100,
         ]);
+    }
+
+    public function files(Request $request, Project $project): JsonResponse
+    {
+        $userId = $request->user()->id;
+        $isOwner = $project->user_id === $userId;
+        $isMember = $project->members()->where('user_id', $userId)->exists();
+        abort_unless($isOwner || $isMember, 403);
+
+        $members = ProjectChatMessageSerializer::projectMembers($project);
+        $conversations = $project->directConversations()
+            ->with([
+                'member:id,name,role',
+                'messages' => fn ($query) => $query
+                    ->whereNotNull('attachment_path')
+                    ->whereNull('deleted_at')
+                    ->with('sender:id,name,role')
+                    ->latest('id'),
+            ])
+            ->when(
+                $isOwner,
+                fn ($query) => $query->whereIn(
+                    'member_user_id',
+                    $project->members()->select('user_id'),
+                ),
+                fn ($query) => $query->where('member_user_id', $userId),
+            )
+            ->get();
+
+        $files = $conversations->flatMap(function ($conversation) use ($project, $members) {
+            $membership = $members->get($conversation->member_user_id);
+            $member = $conversation->member;
+
+            return $conversation->messages->map(function (ProjectMessage $message) use (
+                $project,
+                $members,
+                $membership,
+                $member,
+            ) {
+                return [
+                    ...ProjectChatMessageSerializer::serialize(
+                        $message,
+                        $project,
+                        $members,
+                    ),
+                    'conversation_member' => [
+                        'user_id' => $member->id,
+                        'name' => $membership?->display_name ?: $member->name,
+                        'role' => $membership?->role ?: $member->role,
+                        'designation' => $membership?->designation,
+                    ],
+                ];
+            });
+        })->values();
+
+        return response()->json(['files' => $files]);
     }
 
     public function store(
@@ -53,21 +145,37 @@ class ProjectMessageController extends Controller
         );
         $validated = $request->validate([
             'body' => ['required', 'string', 'max:4000'],
+            'reply_to_message_id' => ['nullable', 'integer'],
         ]);
+        $replyTo = $this->replyTarget(
+            $conversation,
+            $validated['reply_to_message_id'] ?? null,
+        );
 
         $message = $conversation->messages()->create([
             'sender_user_id' => $request->user()->id,
             'body' => trim($validated['body']),
-        ])->load('sender:id,name');
+            'reply_to_message_id' => $replyTo?->id,
+        ])->load(['sender:id,name,role', 'replyTo.sender:id,name,role']);
         $this->notifyConversationRecipient(
             $request,
             $project,
             $conversation,
             $message,
         );
+        $this->broadcastMessage(
+            $project,
+            $conversation,
+            $memberUserId,
+            $message,
+        );
 
         return response()->json([
-            'message' => $this->messageResponse($message),
+            'message' => ProjectChatMessageSerializer::serialize(
+                $message,
+                $project,
+                ProjectChatMessageSerializer::projectMembers($project),
+            ),
         ], 201);
     }
 
@@ -88,7 +196,12 @@ class ProjectMessageController extends Controller
                 'max:25600',
             ],
             'message_type' => ['required', 'in:image,file,voice'],
+            'reply_to_message_id' => ['nullable', 'integer'],
         ]);
+        $replyTo = $this->replyTarget(
+            $conversation,
+            $validated['reply_to_message_id'] ?? null,
+        );
         $file = $validated['file'];
         $extension = strtolower($file->getClientOriginalExtension());
         $type = $validated['message_type'];
@@ -110,17 +223,205 @@ class ProjectMessageController extends Controller
             'attachment_name' => $file->getClientOriginalName(),
             'attachment_mime_type' => $file->getMimeType() ?: 'application/octet-stream',
             'attachment_size' => $file->getSize(),
-        ])->load('sender:id,name');
+            'reply_to_message_id' => $replyTo?->id,
+        ])->load(['sender:id,name,role', 'replyTo.sender:id,name,role']);
         $this->notifyConversationRecipient(
             $request,
             $project,
             $conversation,
             $message,
         );
+        $this->broadcastMessage(
+            $project,
+            $conversation,
+            $memberUserId,
+            $message,
+        );
 
         return response()->json([
-            'message' => $this->messageResponse($message),
+            'message' => ProjectChatMessageSerializer::serialize(
+                $message,
+                $project,
+                ProjectChatMessageSerializer::projectMembers($project),
+            ),
         ], 201);
+    }
+
+    public function storeLocation(
+        Request $request,
+        Project $project,
+        int $memberUserId,
+    ): JsonResponse {
+        $conversation = $this->conversationForParticipant(
+            $request,
+            $project,
+            $memberUserId,
+        );
+        $validated = $request->validate([
+            'latitude' => ['required', 'numeric', 'between:-90,90'],
+            'longitude' => ['required', 'numeric', 'between:-180,180'],
+            'address' => ['required', 'string', 'max:255'],
+            'reply_to_message_id' => ['nullable', 'integer'],
+        ]);
+        $replyTo = $this->replyTarget(
+            $conversation,
+            $validated['reply_to_message_id'] ?? null,
+        );
+        $message = $conversation->messages()->create([
+            'sender_user_id' => $request->user()->id,
+            'body' => $validated['address'],
+            'message_type' => 'location',
+            'reply_to_message_id' => $replyTo?->id,
+            'location_latitude' => $validated['latitude'],
+            'location_longitude' => $validated['longitude'],
+            'location_address' => $validated['address'],
+        ])->load(['sender:id,name,role', 'replyTo.sender:id,name,role']);
+        $this->notifyConversationRecipient(
+            $request,
+            $project,
+            $conversation,
+            $message,
+        );
+        $this->broadcastMessage(
+            $project,
+            $conversation,
+            $memberUserId,
+            $message,
+        );
+
+        return response()->json([
+            'message' => ProjectChatMessageSerializer::serialize(
+                $message,
+                $project,
+                ProjectChatMessageSerializer::projectMembers($project),
+            ),
+        ], 201);
+    }
+
+    public function updateMessage(
+        Request $request,
+        Project $project,
+        int $memberUserId,
+        ProjectMessage $message,
+    ): JsonResponse {
+        $conversation = $this->conversationForParticipant(
+            $request,
+            $project,
+            $memberUserId,
+        );
+        abort_unless($message->conversation_id === $conversation->id, 404);
+        abort_unless(
+            $message->sender_user_id === $request->user()->id
+                && $message->deleted_at === null
+                && $message->message_type === 'text',
+            403,
+        );
+        $validated = $request->validate([
+            'body' => ['required', 'string', 'max:4000'],
+        ]);
+        $message->forceFill([
+            'body' => trim($validated['body']),
+            'edited_at' => now(),
+        ])->save();
+        $message->load(['sender:id,name,role', 'replyTo.sender:id,name,role']);
+        $this->broadcastMessage(
+            $project,
+            $conversation,
+            $memberUserId,
+            $message,
+            'updated',
+        );
+
+        return response()->json([
+            'message' => ProjectChatMessageSerializer::serialize(
+                $message,
+                $project,
+                ProjectChatMessageSerializer::projectMembers($project),
+            ),
+        ]);
+    }
+
+    public function deleteMessage(
+        Request $request,
+        Project $project,
+        int $memberUserId,
+        ProjectMessage $message,
+    ): JsonResponse {
+        $conversation = $this->conversationForParticipant(
+            $request,
+            $project,
+            $memberUserId,
+        );
+        abort_unless($message->conversation_id === $conversation->id, 404);
+        abort_unless(
+            $message->sender_user_id === $request->user()->id
+                && $message->deleted_at === null,
+            403,
+        );
+        if ($message->attachment_path !== null) {
+            $disk = Storage::disk('local');
+            if ($disk->exists($message->attachment_path)
+                && ! $disk->delete($message->attachment_path)) {
+                return response()->json([
+                    'message' => 'The attachment could not be deleted. Please try again.',
+                ], 500);
+            }
+        }
+        $message->forceFill([
+            'body' => null,
+            'message_type' => 'deleted',
+            'attachment_path' => null,
+            'attachment_name' => null,
+            'attachment_mime_type' => null,
+            'attachment_size' => null,
+            'location_latitude' => null,
+            'location_longitude' => null,
+            'location_address' => null,
+            'deleted_at' => now(),
+        ])->save();
+        $message->load(['sender:id,name,role', 'replyTo.sender:id,name,role']);
+        $this->broadcastMessage(
+            $project,
+            $conversation,
+            $memberUserId,
+            $message,
+            'deleted',
+        );
+
+        return response()->json([
+            'message' => ProjectChatMessageSerializer::serialize(
+                $message,
+                $project,
+                ProjectChatMessageSerializer::projectMembers($project),
+            ),
+        ]);
+    }
+
+    public function markRead(
+        Request $request,
+        Project $project,
+        int $memberUserId,
+    ): JsonResponse {
+        $conversation = $this->conversationForParticipant(
+            $request,
+            $project,
+            $memberUserId,
+        );
+        $lastMessageId = (int) ($conversation->messages()->max('id') ?? 0);
+        DB::table('project_chat_reads')->updateOrInsert(
+            [
+                'project_id' => $project->id,
+                'user_id' => $request->user()->id,
+                'conversation_type' => 'direct',
+                'conversation_id' => $conversation->id,
+            ],
+            [
+                'last_read_message_id' => $lastMessageId,
+                'updated_at' => now(),
+            ],
+        );
+
+        return response()->json(['last_read_message_id' => $lastMessageId]);
     }
 
     public function downloadAttachment(
@@ -136,6 +437,7 @@ class ProjectMessageController extends Controller
         );
         abort_unless(
             $message->conversation_id === $conversation->id
+                && $message->deleted_at === null
                 && $message->attachment_path !== null,
             404,
         );
@@ -168,19 +470,38 @@ class ProjectMessageController extends Controller
         ]);
     }
 
-    private function messageResponse(ProjectMessage $message): array
-    {
-        return [
-            'id' => $message->id,
-            'body' => $message->body,
-            'message_type' => $message->message_type,
-            'attachment_name' => $message->attachment_name,
-            'attachment_mime_type' => $message->attachment_mime_type,
-            'attachment_size' => $message->attachment_size,
-            'sender_user_id' => $message->sender_user_id,
-            'sender_name' => $message->sender?->name,
-            'created_at' => $message->created_at?->toIso8601String(),
-        ];
+    private function replyTarget(
+        ProjectConversation $conversation,
+        mixed $replyToId,
+    ): ?ProjectMessage {
+        if ($replyToId === null) {
+            return null;
+        }
+
+        return $conversation->messages()
+            ->whereNull('deleted_at')
+            ->findOrFail($replyToId);
+    }
+
+    private function broadcastMessage(
+        Project $project,
+        ProjectConversation $conversation,
+        int $memberUserId,
+        ProjectMessage $message,
+        string $change = 'created',
+    ): void {
+        broadcast(new ProjectChatMessageChanged(
+            projectId: $project->id,
+            conversationType: 'direct',
+            conversationId: $conversation->id,
+            memberUserId: $memberUserId,
+            message: ProjectChatMessageSerializer::serialize(
+                $message,
+                $project,
+                ProjectChatMessageSerializer::projectMembers($project),
+            ),
+            change: $change,
+        ));
     }
 
     private function notifyConversationRecipient(
@@ -197,19 +518,27 @@ class ProjectMessageController extends Controller
             'image' => 'Sent an image.',
             'file' => 'Sent a file: '.($message->attachment_name ?? 'attachment'),
             'voice' => 'Sent a voice message.',
+            'location' => 'Shared a location.',
             default => mb_strimwidth($message->body ?? '', 0, 120, '…'),
         };
-        User::query()->findOrFail($recipientId)->notify(
-            new ProjectActivityNotification(
-                event: 'chat_message',
-                title: "New message from {$actor->name}",
-                message: $preview,
-                projectId: $project->id,
-                projectName: $project->name,
-                actorId: $actor->id,
-                actorName: $actor->name,
-                relatedId: $message->id,
-            ),
+        $recipient = User::query()->findOrFail($recipientId);
+        $notification = new ProjectActivityNotification(
+            event: 'chat_message',
+            title: "New message from {$actor->name}",
+            message: $preview,
+            projectId: $project->id,
+            projectName: $project->name,
+            actorId: $actor->id,
+            actorName: $actor->name,
+            relatedId: $message->id,
+        );
+        $recipient->notify($notification);
+        $this->firebasePushService->queue(
+            $recipient,
+            $notification->toPushPayload([
+                'conversation_type' => 'direct',
+                'member_user_id' => (string) $conversation->member_user_id,
+            ]),
         );
     }
 

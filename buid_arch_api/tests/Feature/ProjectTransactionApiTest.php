@@ -65,6 +65,58 @@ class ProjectTransactionApiTest extends TestCase
         ]);
     }
 
+    public function test_repeating_an_attempt_id_returns_the_existing_transaction(): void
+    {
+        $owner = User::factory()->create();
+        $member = User::factory()->create(['role' => 'contractor']);
+        $project = $owner->projects()->create([
+            'name' => 'Home renovation',
+            'location' => 'Kochi',
+            'type' => 'renovation',
+        ]);
+        ProjectMember::create([
+            'project_id' => $project->id,
+            'user_id' => $member->id,
+            'role' => 'contractor',
+        ]);
+
+        $payload = [
+            'payee_name' => 'Build Mart',
+            'payee_type' => 'shop',
+            'amount' => 1250.5,
+            'currency' => 'INR',
+            'status' => 'pending',
+            'payment_method' => 'UPI',
+            'payment_type' => 'provider',
+            'description' => 'Cement and sand',
+            'category' => 'materials',
+            'attempt_id' => 'upi-attempt-123',
+        ];
+        $endpoint = "/api/projects/{$project->id}/transactions";
+
+        $first = $this->actingAs($member, 'sanctum')
+            ->postJson($endpoint, $payload)
+            ->assertCreated();
+        $transactionId = $first->json('transaction.id');
+
+        $this->postJson($endpoint, $payload)
+            ->assertOk()
+            ->assertJsonPath('transaction.id', $transactionId);
+
+        $this->patchJson("{$endpoint}/{$transactionId}", ['status' => 'completed'])
+            ->assertOk();
+
+        $this->postJson($endpoint, $payload)
+            ->assertOk()
+            ->assertJsonPath('transaction.id', $transactionId)
+            ->assertJsonPath('transaction.status', 'completed');
+
+        $this->postJson($endpoint, [...$payload, 'amount' => 1500])
+            ->assertStatus(409);
+
+        $this->assertDatabaseCount('project_transactions', 1);
+    }
+
     public function test_non_members_cannot_access_project_transaction_history(): void
     {
         $owner = User::factory()->create();

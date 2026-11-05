@@ -69,9 +69,84 @@ class ProjectsApiTest extends TestCase
             'name' => 'Invalid coordinates',
             'location' => 'Chennai, Tamil Nadu',
             'latitude' => 91,
+            'longitude' => 80.2707,
             'type' => 'new_construction',
         ])->assertUnprocessable()
+            ->assertJsonValidationErrors('latitude');
+
+        $this->postJson('/api/projects', [
+            'name' => 'Partial coordinates',
+            'location' => 'Chennai, Tamil Nadu',
+            'latitude' => 13.0827,
+            'type' => 'new_construction',
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors('longitude');
+    }
+
+    public function test_project_update_rejects_partial_or_mixed_null_coordinates(): void
+    {
+        $owner = User::factory()->create();
+        $project = $owner->projects()->create([
+            'name' => 'Coordinate project',
+            'location' => 'Chennai, Tamil Nadu',
+            'latitude' => 13.0827,
+            'longitude' => 80.2707,
+            'type' => 'new_construction',
+        ]);
+        $endpoint = "/api/projects/{$project->id}";
+
+        $this->actingAs($owner, 'sanctum')
+            ->patchJson($endpoint, ['latitude' => 12.5])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('longitude');
+
+        $this->patchJson($endpoint, ['longitude' => null])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('latitude');
+
+        $this->patchJson($endpoint, [
+            'latitude' => null,
+            'longitude' => 80.2707,
+        ])->assertUnprocessable()
             ->assertJsonValidationErrors(['latitude', 'longitude']);
+
+        $this->assertDatabaseHas('projects', [
+            'id' => $project->id,
+            'latitude' => 13.0827,
+            'longitude' => 80.2707,
+        ]);
+    }
+
+    public function test_project_update_preserves_omitted_coordinates_and_clears_null_pair(): void
+    {
+        $owner = User::factory()->create();
+        $project = $owner->projects()->create([
+            'name' => 'Coordinate project',
+            'location' => 'Chennai, Tamil Nadu',
+            'latitude' => 13.0827,
+            'longitude' => 80.2707,
+            'type' => 'new_construction',
+        ]);
+        $endpoint = "/api/projects/{$project->id}";
+
+        $this->actingAs($owner, 'sanctum')
+            ->patchJson($endpoint, ['location' => 'Kochi, Kerala'])
+            ->assertOk()
+            ->assertJsonPath('project.latitude', 13.0827)
+            ->assertJsonPath('project.longitude', 80.2707);
+
+        $this->patchJson($endpoint, [
+            'latitude' => null,
+            'longitude' => null,
+        ])->assertOk()
+            ->assertJsonPath('project.latitude', null)
+            ->assertJsonPath('project.longitude', null);
+
+        $this->assertDatabaseHas('projects', [
+            'id' => $project->id,
+            'latitude' => null,
+            'longitude' => null,
+        ]);
     }
 
     public function test_project_creation_requires_authentication(): void

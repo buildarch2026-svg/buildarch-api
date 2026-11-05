@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "515190585110",
+    "project_id": "my-build-arch-develoment",
+    "storage_bucket": "my-build-arch-develoment.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:515190585110:android:20daae980d2e89b0074237",
+        "android_client_info": {
+          "package_name": "com.example.buid_arch"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyABPYvdYEd2S3E-Jj3vr3Kmm5VHmSQ0AqA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

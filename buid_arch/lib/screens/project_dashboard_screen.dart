@@ -6,14 +6,13 @@ import '../models/project.dart';
 import '../navigation/profile_navigation.dart';
 import 'project_invitations_screen.dart';
 import 'project_documents_screen.dart';
-import 'project_group_voice_chat_screen.dart';
+import 'project_chats_screen.dart';
 import 'project_transactions_screen.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 import '../widgets/app_bottom_nav.dart';
 import '../widgets/dashboard_hero.dart';
 import '../widgets/dashboard_quick_action.dart';
-import '../widgets/dashboard_section_grid.dart';
 import '../widgets/notification_action_button.dart';
 import 'all_project_files_screen.dart';
 import 'project_members_screen.dart';
@@ -179,50 +178,6 @@ class ProjectDashboardScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 24),
-
-            // Documents
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: DashboardSectionGrid(
-                title: 'Documents',
-                tiles: [
-                  DashboardTileSpec(
-                    icon: Icons.architecture,
-                    label: 'Drawings',
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => ProjectDocumentsScreen(
-                          project: project,
-                          category: 'drawings',
-                        ),
-                      ),
-                    ),
-                  ),
-                  const DashboardTileSpec(
-                      icon: Icons.verified_outlined,
-                      label: 'Approvals',
-                      iconColor: AppColors.secondary),
-                  const DashboardTileSpec(
-                      icon: Icons.calculate_outlined, label: 'Estimates'),
-                  const DashboardTileSpec(
-                      icon: Icons.photo_camera_outlined,
-                      label: 'Photos',
-                      iconColor: AppColors.secondary),
-                  const DashboardTileSpec(
-                      icon: Icons.receipt_long_outlined, label: 'Invoices'),
-                  DashboardTileSpec(
-                      icon: Icons.folder_outlined,
-                      label: 'All Files',
-                      iconColor: AppColors.secondary,
-                      onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) =>
-                                  ProjectDocumentsScreen(project: project),
-                            ),
-                          )),
-                ],
-              ),
-            ),
           ],
         ),
       ),
@@ -232,7 +187,7 @@ class ProjectDashboardScreen extends StatelessWidget {
           if (tab == AppTab.chat) {
             Navigator.of(context).push(
               MaterialPageRoute(
-                builder: (_) => ProjectGroupVoiceChatScreen(project: project),
+                builder: (_) => const ProjectChatsScreen(),
               ),
             );
           } else if (tab == AppTab.files) {

@@ -38,4 +38,21 @@ class ProjectActivityNotification extends Notification
             'related_id' => $this->relatedId,
         ];
     }
+
+    public function toPushPayload(array $additionalData = []): array
+    {
+        return [
+            'title' => $this->title,
+            'body' => $this->message,
+            'data' => [
+                'event' => $this->event,
+                'project_id' => (string) $this->projectId,
+                'project_name' => $this->projectName,
+                'actor_id' => (string) $this->actorId,
+                'actor_name' => $this->actorName,
+                'related_id' => (string) ($this->relatedId ?? ''),
+                ...$additionalData,
+            ],
+        ];
+    }
 }

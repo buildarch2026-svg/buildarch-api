@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../services/pending_invitation_service.dart';
+import '../services/push_notification_service.dart';
 import 'invitation_details_screen.dart';
 import 'projects_screen.dart';
 
@@ -18,6 +21,7 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     WidgetsBinding.instance
         .addPostFrameCallback((_) => _openPendingInvitation());
+    unawaited(PushNotificationService.instance.registerDevice());
   }
 
   Future<void> _openPendingInvitation() async {

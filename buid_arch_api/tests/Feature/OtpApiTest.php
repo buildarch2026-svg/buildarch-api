@@ -7,7 +7,9 @@ use App\Models\User;
 use App\Services\GoogleIdentityVerificationUnavailable;
 use App\Services\GoogleIdTokenVerifier;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request as HttpRequest;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
 use Mockery\MockInterface;
 use Tests\TestCase;
 
@@ -25,7 +27,14 @@ class OtpApiTest extends TestCase
     {
         parent::setUp();
         $this->app['env'] = 'local';
-        config(['services.google.client_id' => 'test-google-web-client-id']);
+        config([
+            'services.google.client_id' => 'test-google-web-client-id',
+            'services.whatsapp.access_token' => null,
+            'services.whatsapp.phone_number_id' => null,
+            'services.whatsapp.otp_template' => null,
+            'services.whatsapp.otp_template_language' => 'en_US',
+            'services.whatsapp.graph_api_version' => 'v26.0',
+        ]);
     }
 
     public function test_request_creates_a_challenge_for_an_e164_number(): void
@@ -48,6 +57,9 @@ class OtpApiTest extends TestCase
                 'phone_number' => '+919876543210',
             ])->assertOk();
         }
+        $this->postJson('/api/auth/otp/request', [
+            'phone_number' => '+919876543210',
+        ])->assertTooManyRequests();
 
         $user = User::factory()->create(['phone_number' => null]);
         $token = $user->createToken('test')->plainTextToken;
@@ -62,6 +74,71 @@ class OtpApiTest extends TestCase
         $this->assertDatabaseHas('otp_challenges', [
             'phone_number' => '+919876543211',
             'attempts' => 0,
+        ]);
+    }
+
+    public function test_request_sends_the_otp_using_the_configured_whatsapp_template(): void
+    {
+        config([
+            'services.whatsapp.access_token' => 'test-access-token',
+            'services.whatsapp.phone_number_id' => '123456789',
+            'services.whatsapp.otp_template' => 'build_arch_otp',
+        ]);
+        $sentCode = null;
+        Http::fake(function (HttpRequest $request) use (&$sentCode) {
+            $sentCode = $request['template']['components'][0]['parameters'][0]['text'];
+
+            return Http::response(['messages' => [['id' => 'test-message-id']]], 200);
+        });
+
+        $response = $this->postJson('/api/auth/otp/request', [
+            'phone_number' => '+919876543210',
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('message', 'Verification code sent via WhatsApp.')
+            ->assertJsonPath('expires_in', 300)
+            ->assertJsonMissingPath('code');
+        $this->assertIsString($sentCode);
+        $this->assertMatchesRegularExpression('/^\d{6}$/', $sentCode);
+        $this->assertTrue(Hash::check(
+            $sentCode,
+            OtpChallenge::where('phone_number', '+919876543210')->value('code_hash'),
+        ));
+        Http::assertSent(function (HttpRequest $request) use ($sentCode): bool {
+            return $request->url()
+                    === 'https://graph.facebook.com/v26.0/123456789/messages'
+                && $request->hasHeader('Authorization', 'Bearer test-access-token')
+                && $request['messaging_product'] === 'whatsapp'
+                && $request['to'] === '919876543210'
+                && $request['type'] === 'template'
+                && $request['template']['name'] === 'build_arch_otp'
+                && $request['template']['language']['code'] === 'en_US'
+                && $request['template']['components'][0]['parameters'][0]['text'] === $sentCode;
+        });
+    }
+
+    public function test_failed_whatsapp_delivery_does_not_leave_an_active_challenge(): void
+    {
+        config([
+            'services.whatsapp.access_token' => 'test-access-token',
+            'services.whatsapp.phone_number_id' => '123456789',
+            'services.whatsapp.otp_template' => 'build_arch_otp',
+        ]);
+        Http::fake([
+            'https://graph.facebook.com/*' => Http::response(['error' => ['message' => 'rejected']], 400),
+        ]);
+
+        $this->postJson('/api/auth/otp/request', [
+            'phone_number' => '+919876543210',
+        ])->assertServiceUnavailable()
+            ->assertJsonPath(
+                'message',
+                'Could not send a verification code. Please try again.',
+            );
+
+        $this->assertDatabaseMissing('otp_challenges', [
+            'phone_number' => '+919876543210',
         ]);
     }
 
@@ -125,6 +202,55 @@ class OtpApiTest extends TestCase
             ->assertJsonPath('message', 'Code is invalid or expired.');
 
         $this->assertDatabaseCount('personal_access_tokens', 1);
+        $this->assertDatabaseMissing('otp_challenges', [
+            'phone_number' => '+919876543210',
+        ]);
+    }
+
+    public function test_expired_otp_is_rejected(): void
+    {
+        OtpChallenge::create([
+            'phone_number' => '+919876543210',
+            'code_hash' => Hash::make('123456'),
+            'attempts' => 0,
+            'expires_at' => now()->subSecond(),
+        ]);
+
+        $this->postJson('/api/auth/otp/verify', [
+            'phone_number' => '+919876543210',
+            'code' => '123456',
+        ])->assertUnprocessable()
+            ->assertJsonPath('message', 'Code is invalid or expired.');
+
+        $this->assertDatabaseHas('otp_challenges', [
+            'phone_number' => '+919876543210',
+        ]);
+        $this->assertDatabaseCount('personal_access_tokens', 0);
+    }
+
+    public function test_otp_challenge_is_removed_after_too_many_incorrect_attempts(): void
+    {
+        OtpChallenge::create([
+            'phone_number' => '+919876543210',
+            'code_hash' => Hash::make('123456'),
+            'attempts' => 0,
+            'expires_at' => now()->addMinutes(5),
+        ]);
+
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            $this->postJson('/api/auth/otp/verify', [
+                'phone_number' => '+919876543210',
+                'code' => '654321',
+            ])->assertUnprocessable()
+                ->assertJsonPath('message', 'Code is incorrect.');
+        }
+
+        $this->postJson('/api/auth/otp/verify', [
+            'phone_number' => '+919876543210',
+            'code' => '654321',
+        ])->assertTooManyRequests()
+            ->assertJsonPath('message', 'Too many attempts. Request a new code.');
+
         $this->assertDatabaseMissing('otp_challenges', [
             'phone_number' => '+919876543210',
         ]);

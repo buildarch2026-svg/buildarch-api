@@ -9,6 +9,7 @@ import 'screens/unlock_screen.dart';
 import 'services/app_lock_service.dart';
 import 'services/auth_session_service.dart';
 import 'services/invitation_link_service.dart';
+import 'services/push_notification_service.dart';
 import 'theme/app_colors.dart';
 import 'theme/app_theme.dart';
 
@@ -16,15 +17,14 @@ void main() {
   runApp(const BuidArchApp());
 }
 
-final _navigatorKey = GlobalKey<NavigatorState>();
-
 class BuidArchApp extends StatelessWidget {
   const BuidArchApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      navigatorKey: _navigatorKey,
+      navigatorKey: PushNotificationService.navigatorKey,
+      scaffoldMessengerKey: PushNotificationService.messengerKey,
       title: 'Build Arch',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
@@ -48,7 +48,11 @@ class _StartupGateState extends State<_StartupGate> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(InvitationLinkService.instance.start(_navigatorKey));
+      unawaited(
+        InvitationLinkService.instance.start(
+          PushNotificationService.navigatorKey,
+        ),
+      );
     });
     _startup = _loadStartupState();
   }

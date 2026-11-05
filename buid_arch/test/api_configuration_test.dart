@@ -45,4 +45,41 @@ void main() {
       'https://api.example.test/api/user',
     );
   });
+
+  test('builds the Reverb WebSocket URI for local Android forwarding', () {
+    final uri = ApiConfiguration(
+      baseUrl: 'http://127.0.0.1:8000/api',
+    ).resolveChatSocket(
+      appKey: 'local-key',
+      host: '127.0.0.1',
+      port: 8080,
+      scheme: 'http',
+    );
+
+    expect(uri.scheme, 'ws');
+    expect(uri.host, '127.0.0.1');
+    expect(uri.port, 8080);
+    expect(uri.path, '/app/local-key');
+    expect(uri.queryParameters['protocol'], '7');
+  });
+
+  test('uses secure Reverb WebSockets for a public HTTPS API', () {
+    final uri = ApiConfiguration(
+      baseUrl: 'https://api.example.test/api',
+      requireHttps: true,
+    ).resolveChatSocket(appKey: 'public-key');
+
+    expect(uri.scheme, 'wss');
+    expect(uri.host, 'api.example.test');
+    expect(uri.path, '/app/public-key');
+  });
+
+  test('rejects a missing Reverb application key', () {
+    expect(
+      () => ApiConfiguration(
+        baseUrl: 'https://api.example.test/api',
+      ).resolveChatSocket(appKey: ''),
+      throwsA(isA<ApiConfigurationException>()),
+    );
+  });
 }
