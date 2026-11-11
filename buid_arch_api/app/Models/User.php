@@ -6,6 +6,7 @@ namespace App\Models;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
@@ -73,4 +74,28 @@ class User extends Authenticatable
         return $this->hasMany(ProjectInvitation::class, 'invited_by_user_id');
     }
 
+    public function communityProfile(): HasOne
+    {
+        return $this->hasOne(CommunityProfile::class);
+    }
+
+    public function employerProfile(): HasOne
+    {
+        return $this->hasOne(EmployerProfile::class);
+    }
+
+    public function jobSeekerProfile(): HasOne
+    {
+        return $this->hasOne(JobSeekerProfile::class);
+    }
+
+    public function constructionJobs(): HasMany
+    {
+        return $this->hasMany(ConstructionJob::class, 'employer_id');
+    }
+
+    public function jobApplications(): HasMany
+    {
+        return $this->hasMany(JobApplication::class, 'applicant_id');
+    }
 }

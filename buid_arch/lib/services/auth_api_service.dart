@@ -9,6 +9,8 @@ import 'package:path_provider/path_provider.dart';
 
 import '../models/project.dart';
 import '../models/project_chat_conversation.dart';
+import '../models/community.dart';
+import '../models/job_portal.dart';
 import '../models/project_document.dart';
 import '../models/project_invitation.dart';
 import '../models/project_member.dart';
@@ -48,6 +50,1157 @@ class AuthApiService {
 
   final http.Client _client;
   final ApiConfiguration _configuration;
+
+  Future<JobPortalDashboard> getJobPortalDashboard({
+    required String token,
+  }) async {
+    final response = await _get(
+      '/jobs/dashboard',
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    try {
+      return JobPortalDashboard.fromJson(response);
+    } on FormatException catch (error) {
+      throw AuthApiException(error.message);
+    }
+  }
+
+  Future<List<JobPortalCategory>> getJobPortalCategories({
+    required String token,
+  }) async {
+    final response = await _get(
+      '/jobs/categories',
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    final raw = response['categories'];
+    if (raw is! List) {
+      throw const AuthApiException('The job categories response was invalid.');
+    }
+    try {
+      return raw.map((value) {
+        if (value is! Map) {
+          throw const FormatException('The job category was invalid.');
+        }
+        return JobPortalCategory.fromJson(Map<String, dynamic>.from(value));
+      }).toList(growable: false);
+    } on FormatException catch (error) {
+      throw AuthApiException(error.message);
+    }
+  }
+
+  Future<JobPortalPage<ConstructionJob>> getConstructionJobs({
+    required String token,
+    int page = 1,
+    String? query,
+    String? category,
+    String? employmentType,
+    String? location,
+    double? latitude,
+    double? longitude,
+    int? distanceKm,
+    double? minSalary,
+    double? maxSalary,
+    String? experience,
+    String sort = 'latest',
+  }) async {
+    final parameters = <String, String>{'page': '$page'};
+    if (query?.trim().isNotEmpty == true) parameters['q'] = query!.trim();
+    if (category != null) parameters['category'] = category;
+    if (employmentType != null) parameters['employment_type'] = employmentType;
+    if (minSalary != null) parameters['min_salary'] = '$minSalary';
+    if (maxSalary != null) parameters['max_salary'] = '$maxSalary';
+    if (experience?.trim().isNotEmpty == true) {
+      parameters['experience'] = experience!.trim();
+    }
+    parameters['sort'] = sort;
+    if (location?.trim().isNotEmpty == true) {
+      parameters['location'] = location!.trim();
+    }
+    if (latitude != null && longitude != null) {
+      parameters['latitude'] = '$latitude';
+      parameters['longitude'] = '$longitude';
+      if (distanceKm != null) parameters['distance_km'] = '$distanceKm';
+    }
+    final response = await _get(
+      '/jobs?${Uri(queryParameters: parameters).query}',
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    try {
+      return JobPortalPage<ConstructionJob>.fromJson(
+        response,
+        'jobs',
+        ConstructionJob.fromJson,
+      );
+    } on FormatException catch (error) {
+      throw AuthApiException(error.message);
+    }
+  }
+
+  Future<ConstructionJob> getConstructionJob({
+    required String token,
+    required int jobId,
+  }) async {
+    final response = await _get(
+      '/jobs/$jobId',
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    return _constructionJobFromResponse(response);
+  }
+
+  Future<ConstructionJob> createConstructionJob({
+    required String token,
+    required Map<String, dynamic> fields,
+  }) async {
+    final response = await _post(
+      '/jobs',
+      fields,
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    return _constructionJobFromResponse(response);
+  }
+
+  Future<ConstructionJob> updateConstructionJob({
+    required String token,
+    required int jobId,
+    required Map<String, dynamic> fields,
+  }) async {
+    final response = await _patch(
+      '/jobs/$jobId',
+      fields,
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    return _constructionJobFromResponse(response);
+  }
+
+  Future<void> updateConstructionJobStatus({
+    required String token,
+    required int jobId,
+    required String status,
+  }) async {
+    await _put(
+      '/jobs/$jobId/status',
+      {'status': status},
+      headers: {'Authorization': 'Bearer $token'},
+    );
+  }
+
+  Future<void> deleteConstructionJob({
+    required String token,
+    required int jobId,
+  }) async {
+    await _delete(
+      '/jobs/$jobId',
+      headers: {'Authorization': 'Bearer $token'},
+    );
+  }
+
+  Future<JobPortalEmployerProfile?> getEmployerProfile({
+    required String token,
+  }) async {
+    final response = await _get(
+      '/jobs/employer-profile',
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    final profile = response['profile'];
+    if (profile == null) return null;
+    if (profile is! Map) {
+      throw const AuthApiException(
+          'The employer profile response was invalid.');
+    }
+    try {
+      return JobPortalEmployerProfile.fromJson(
+        Map<String, dynamic>.from(profile),
+      );
+    } on FormatException catch (error) {
+      throw AuthApiException(error.message);
+    }
+  }
+
+  Future<JobPortalEmployerProfile> saveEmployerProfile({
+    required String token,
+    required Map<String, dynamic> fields,
+    XFile? companyLogo,
+  }) async {
+    final response = await _postJobMultipart(
+      '/jobs/employer-profile',
+      token: token,
+      fields: fields,
+      files: {if (companyLogo != null) 'company_logo': companyLogo},
+    );
+    final profile = response['profile'];
+    if (profile is! Map) {
+      throw const AuthApiException(
+          'The employer profile response was invalid.');
+    }
+    try {
+      return JobPortalEmployerProfile.fromJson(
+        Map<String, dynamic>.from(profile),
+      );
+    } on FormatException catch (error) {
+      throw AuthApiException(error.message);
+    }
+  }
+
+  Future<JobPortalSeekerProfile?> getJobSeekerProfile({
+    required String token,
+  }) async {
+    final response = await _get(
+      '/jobs/job-seeker-profile',
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    final profile = response['profile'];
+    if (profile == null) return null;
+    if (profile is! Map) {
+      throw const AuthApiException(
+          'The job seeker profile response was invalid.');
+    }
+    try {
+      return JobPortalSeekerProfile.fromJson(
+        Map<String, dynamic>.from(profile),
+      );
+    } on FormatException catch (error) {
+      throw AuthApiException(error.message);
+    }
+  }
+
+  Future<JobPortalSeekerProfile> saveJobSeekerProfile({
+    required String token,
+    required Map<String, dynamic> fields,
+    XFile? profileImage,
+    XFile? resume,
+  }) async {
+    final response = await _postJobMultipart(
+      '/jobs/job-seeker-profile',
+      token: token,
+      fields: fields,
+      files: {
+        if (profileImage != null) 'profile_image': profileImage,
+        if (resume != null) 'resume': resume,
+      },
+    );
+    final profile = response['profile'];
+    if (profile is! Map) {
+      throw const AuthApiException(
+          'The job seeker profile response was invalid.');
+    }
+    try {
+      return JobPortalSeekerProfile.fromJson(
+        Map<String, dynamic>.from(profile),
+      );
+    } on FormatException catch (error) {
+      throw AuthApiException(error.message);
+    }
+  }
+
+  Future<void> saveConstructionJob({
+    required String token,
+    required int jobId,
+  }) async {
+    await _put(
+      '/jobs/$jobId/saved',
+      const {},
+      headers: {'Authorization': 'Bearer $token'},
+    );
+  }
+
+  Future<void> unsaveConstructionJob({
+    required String token,
+    required int jobId,
+  }) async {
+    await _delete(
+      '/jobs/$jobId/saved',
+      headers: {'Authorization': 'Bearer $token'},
+    );
+  }
+
+  Future<JobPortalApplication> applyForConstructionJob({
+    required String token,
+    required int jobId,
+    String? coverLetter,
+    XFile? resume,
+  }) async {
+    final fields = <String, dynamic>{
+      if (coverLetter?.trim().isNotEmpty == true)
+        'cover_letter': coverLetter!.trim(),
+    };
+    final response = resume == null
+        ? await _post(
+            '/jobs/$jobId/applications',
+            fields,
+            headers: {'Authorization': 'Bearer $token'},
+          )
+        : await _postJobMultipart(
+            '/jobs/$jobId/applications',
+            token: token,
+            fields: fields,
+            files: {'resume': resume},
+          );
+    final application = response['application'];
+    if (application is! Map) {
+      throw const AuthApiException('The application response was invalid.');
+    }
+    try {
+      return JobPortalApplication.fromJson(
+        Map<String, dynamic>.from(application),
+      );
+    } on FormatException catch (error) {
+      throw AuthApiException(error.message);
+    }
+  }
+
+  Future<JobPortalPage<JobPortalApplication>> getMyJobApplications({
+    required String token,
+    int page = 1,
+  }) async {
+    final response = await _get(
+      '/jobs/applications?page=$page',
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    try {
+      return JobPortalPage<JobPortalApplication>.fromJson(
+        response,
+        'applications',
+        JobPortalApplication.fromJson,
+      );
+    } on FormatException catch (error) {
+      throw AuthApiException(error.message);
+    }
+  }
+
+  Future<JobPortalPage<ConstructionJob>> getMyJobPostings({
+    required String token,
+    int page = 1,
+  }) async {
+    final response = await _get(
+      '/jobs/my-postings?page=$page',
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    try {
+      return JobPortalPage<ConstructionJob>.fromJson(
+        response,
+        'jobs',
+        ConstructionJob.fromJson,
+      );
+    } on FormatException catch (error) {
+      throw AuthApiException(error.message);
+    }
+  }
+
+  Future<JobPortalPage<JobPortalApplication>> getJobApplicants({
+    required String token,
+    required int jobId,
+    int page = 1,
+  }) async {
+    final response = await _get(
+      '/jobs/$jobId/applications?page=$page',
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    try {
+      return JobPortalPage<JobPortalApplication>.fromJson(
+        response,
+        'applications',
+        JobPortalApplication.fromJson,
+      );
+    } on FormatException catch (error) {
+      throw AuthApiException(error.message);
+    }
+  }
+
+  Future<void> updateJobApplication({
+    required String token,
+    required int applicationId,
+    required String status,
+    String? interviewAt,
+    String? employerNote,
+  }) async {
+    await _patch(
+      '/jobs/applications/$applicationId',
+      {
+        'status': status,
+        if (interviewAt != null) 'interview_at': interviewAt,
+        if (employerNote != null) 'employer_note': employerNote,
+      },
+      headers: {'Authorization': 'Bearer $token'},
+    );
+  }
+
+  Future<void> withdrawJobApplication({
+    required String token,
+    required int applicationId,
+  }) async {
+    await _post(
+      '/jobs/applications/$applicationId/withdraw',
+      const {},
+      headers: {'Authorization': 'Bearer $token'},
+    );
+  }
+
+  Future<XFile> downloadJobApplicationResume({
+    required String token,
+    required int applicationId,
+    required String fileName,
+  }) async {
+    late final http.Response response;
+    try {
+      response = await _client.get(
+        _apiUri('/jobs/applications/$applicationId/resume'),
+        headers: {
+          'Accept': '*/*',
+          'Authorization': 'Bearer $token',
+        },
+      ).timeout(_uploadTimeout);
+    } on SocketException {
+      throw const AuthApiException(
+        'Cannot reach the API. Check that Laravel is running and the API URL is correct.',
+      );
+    } on TimeoutException {
+      throw const AuthApiException('The resume download timed out. Try again.');
+    } on http.ClientException {
+      throw const AuthApiException(
+        'Could not connect to the API. Check the device network and API URL.',
+      );
+    }
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      _decodeResponse(response);
+      throw const AuthApiException(
+          'The resume download could not be completed.');
+    }
+    return XFile.fromData(
+      response.bodyBytes,
+      name: fileName,
+      mimeType: response.headers['content-type'],
+    );
+  }
+
+  Future<void> reportConstructionJob({
+    required String token,
+    required int jobId,
+    required String reason,
+    String? details,
+  }) async {
+    await _post(
+      '/jobs/$jobId/reports',
+      {
+        'reason': reason,
+        if (details?.trim().isNotEmpty == true) 'details': details!.trim()
+      },
+      headers: {'Authorization': 'Bearer $token'},
+    );
+  }
+
+  ConstructionJob _constructionJobFromResponse(
+    Map<String, dynamic> response,
+  ) {
+    final job = response['job'];
+    if (job is! Map) {
+      throw const AuthApiException('The job response was invalid.');
+    }
+    try {
+      return ConstructionJob.fromJson(Map<String, dynamic>.from(job));
+    } on FormatException catch (error) {
+      throw AuthApiException(error.message);
+    }
+  }
+
+  Future<Map<String, dynamic>> _postJobMultipart(
+    String path, {
+    required String token,
+    required Map<String, dynamic> fields,
+    Map<String, XFile> files = const {},
+  }) async {
+    final request = http.MultipartRequest('POST', _apiUri(path))
+      ..headers.addAll({
+        'Accept': 'application/json',
+        'Authorization': 'Bearer $token',
+      });
+    for (final entry in fields.entries) {
+      final value = entry.value;
+      if (value == null) continue;
+      if (value is Iterable) {
+        if (value.isEmpty) {
+          request.fields[entry.key] = '[]';
+          continue;
+        }
+        var index = 0;
+        for (final item in value) {
+          request.fields['${entry.key}[$index]'] = '$item';
+          index++;
+        }
+      } else {
+        request.fields[entry.key] = '$value';
+      }
+    }
+    for (final entry in files.entries) {
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          entry.key,
+          await entry.value.readAsBytes(),
+          filename: entry.value.name,
+        ),
+      );
+    }
+    try {
+      final streamed = await _client.send(request).timeout(_uploadTimeout);
+      final response =
+          await http.Response.fromStream(streamed).timeout(_uploadTimeout);
+      return _decodeResponse(response);
+    } on SocketException {
+      throw const AuthApiException(
+        'Cannot reach the API. Check that Laravel is running and the API URL is correct.',
+      );
+    } on TimeoutException {
+      throw const AuthApiException('The upload timed out. Try again.');
+    } on http.ClientException {
+      throw const AuthApiException(
+        'Could not connect to the API. Check the device network and API URL.',
+      );
+    }
+  }
+
+  Future<CommunityProfile?> getCommunityProfile({required String token}) async {
+    final response = await _get(
+      '/community/profile',
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    final profile = response['profile'];
+    if (profile == null) return null;
+    if (profile is! Map) {
+      throw const AuthApiException(
+          'The Community profile response was invalid.');
+    }
+    try {
+      return CommunityProfile.fromJson(Map<String, dynamic>.from(profile));
+    } on FormatException catch (error) {
+      throw AuthApiException(error.message);
+    }
+  }
+
+  Future<CommunityProfile> registerCommunityProfile({
+    required String token,
+    required String displayName,
+    String? profession,
+    String? location,
+    String? otherProfession,
+    String? bio,
+    XFile? profileImage,
+  }) async {
+    final response = await _communityMultipartPost(
+      '/community/profile',
+      token: token,
+      fields: {
+        'display_name': displayName,
+        'guidelines_accepted': '1',
+        if (profession != null) 'profession': profession,
+        if (location != null && location.isNotEmpty) 'location': location,
+        if (otherProfession != null) 'other_profession': otherProfession,
+        if (bio != null && bio.isNotEmpty) 'bio': bio,
+      },
+      image: profileImage,
+      imageField: 'profile_image',
+    );
+    return _communityProfileFromResponse(response);
+  }
+
+  Future<CommunityProfile> updateCommunityProfile({
+    required String token,
+    required String displayName,
+    required String? profession,
+    String? location,
+    String? otherProfession,
+    String? bio,
+    double? latitude,
+    double? longitude,
+    String? trade,
+    List<String>? skills,
+    int? experienceYears,
+    String? preferredLocation,
+    double? preferredLatitude,
+    double? preferredLongitude,
+    List<int>? preferredCategories,
+    int? preferredRadiusKm,
+    bool? jobNotificationsEnabled,
+  }) async {
+    final response = await _patch(
+      '/community/profile',
+      {
+        'display_name': displayName,
+        'profession': profession,
+        'location': location,
+        'other_profession': profession == 'Other' ? otherProfession : null,
+        'bio': bio,
+        if (latitude != null) 'latitude': latitude,
+        if (longitude != null) 'longitude': longitude,
+        'trade': trade,
+        if (skills != null) 'skills': skills,
+        'experience_years': experienceYears,
+        'preferred_location': preferredLocation,
+        if (preferredLatitude != null) 'preferred_latitude': preferredLatitude,
+        if (preferredLongitude != null)
+          'preferred_longitude': preferredLongitude,
+        if (preferredCategories != null)
+          'preferred_categories': preferredCategories,
+        if (preferredRadiusKm != null) 'preferred_radius_km': preferredRadiusKm,
+        if (jobNotificationsEnabled != null)
+          'job_notifications_enabled': jobNotificationsEnabled,
+      },
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    return _communityProfileFromResponse(response);
+  }
+
+  Future<CommunityProfile> updateCommunityProfileImage({
+    required String token,
+    required XFile image,
+  }) async {
+    final response = await _communityMultipartPost(
+      '/community/profile/image',
+      token: token,
+      fields: const {},
+      image: image,
+      imageField: 'profile_image',
+    );
+    return _communityProfileFromResponse(response);
+  }
+
+  Future<CommunityProfile> removeCommunityProfileImage({
+    required String token,
+  }) async {
+    final response = await _delete(
+      '/community/profile/image',
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    return _communityProfileFromResponse(response);
+  }
+
+  Future<List<CommunityCategory>> getCommunityCategories({
+    required String token,
+  }) async {
+    final response = await _get(
+      '/community/categories',
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    final categoriesJson = response['categories'];
+    if (categoriesJson is! List) {
+      throw const AuthApiException(
+          'The Community categories response was invalid.');
+    }
+    try {
+      return categoriesJson.map((item) {
+        if (item is Map) {
+          return CommunityCategory.fromJson(
+            Map<String, dynamic>.from(item),
+          );
+        }
+        throw const FormatException('The Community category was invalid.');
+      }).toList();
+    } on FormatException catch (error) {
+      throw AuthApiException(error.message);
+    }
+  }
+
+  Future<({List<CommunityCategory> categories, CommunityPost? post})>
+      getCommunityPreview({required String token}) async {
+    final results = await Future.wait([
+      _get('/community/preview', headers: {'Authorization': 'Bearer $token'}),
+      _get('/community/categories',
+          headers: {'Authorization': 'Bearer $token'}),
+    ]);
+    final postJson = results[0]['post'];
+    final categoriesJson = results[1]['categories'];
+    if (categoriesJson is! List) {
+      throw const AuthApiException(
+          'The Community categories response was invalid.');
+    }
+    try {
+      final categories = categoriesJson.map((item) {
+        if (item is Map) {
+          return CommunityCategory.fromJson(
+            Map<String, dynamic>.from(item),
+          );
+        }
+        throw const FormatException('The Community category was invalid.');
+      }).toList();
+      return (
+        categories: categories,
+        post: postJson is Map
+            ? CommunityPost.fromJson(Map<String, dynamic>.from(postJson))
+            : null,
+      );
+    } on FormatException catch (error) {
+      throw AuthApiException(error.message);
+    }
+  }
+
+  Future<
+      ({
+        CommunityPage<CommunityPost> page,
+        List<CommunityCategory> categories
+      })> getCommunityFeed({
+    required String token,
+    int page = 1,
+    String? category,
+  }) async {
+    final query = <String, String>{'page': '$page'};
+    if (category != null) query['category'] = category;
+    final response = await _get(
+      '/community/feed?${Uri(queryParameters: query).query}',
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    final categoriesJson = response['categories'];
+    if (categoriesJson is! List) {
+      throw const AuthApiException(
+          'The Community categories response was invalid.');
+    }
+    try {
+      return (
+        page: CommunityPage<CommunityPost>.fromJson(
+          response,
+          'posts',
+          CommunityPost.fromJson,
+        ),
+        categories: categoriesJson.map((item) {
+          if (item is Map) {
+            return CommunityCategory.fromJson(
+              Map<String, dynamic>.from(item),
+            );
+          }
+          throw const FormatException('The Community category was invalid.');
+        }).toList(),
+      );
+    } on FormatException catch (error) {
+      throw AuthApiException(error.message);
+    }
+  }
+
+  Future<CommunityPost> createCommunityPost({
+    required String token,
+    required String content,
+    int? categoryId,
+    List<XFile> images = const [],
+  }) async {
+    final response = await _communityMultipartPost(
+      '/community/posts',
+      token: token,
+      fields: {
+        'content': content,
+        if (categoryId != null) 'category_id': '$categoryId',
+      },
+      images: images,
+    );
+    return _communityPostFromResponse(response);
+  }
+
+  Future<CommunityPost> updateCommunityPost({
+    required String token,
+    required int postId,
+    required String content,
+    int? categoryId,
+    XFile? image,
+    bool removeImage = false,
+  }) async {
+    final response = await _communityMultipartPost(
+      '/community/posts/$postId',
+      token: token,
+      fields: {
+        'content': content,
+        if (categoryId != null) 'category_id': '$categoryId',
+        if (removeImage) 'remove_image': '1',
+      },
+      image: image,
+      imageField: 'image',
+    );
+    return _communityPostFromResponse(response);
+  }
+
+  Future<void> deleteCommunityPost({
+    required String token,
+    required int postId,
+  }) async {
+    await _delete(
+      '/community/posts/$postId',
+      headers: {'Authorization': 'Bearer $token'},
+    );
+  }
+
+  Future<({bool liked, int likesCount})> toggleCommunityLike({
+    required String token,
+    required int postId,
+  }) async {
+    final response = await _put(
+      '/community/posts/$postId/like',
+      const {},
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    final liked = response['liked'];
+    final likesCount = response['likes_count'];
+    if (liked is! bool || likesCount is! num) {
+      throw const AuthApiException('The Community like response was invalid.');
+    }
+    return (liked: liked, likesCount: likesCount.toInt());
+  }
+
+  Future<CommunityPage<CommunityComment>> getCommunityComments({
+    required String token,
+    required int postId,
+    int page = 1,
+  }) async {
+    final response = await _get(
+      '/community/posts/$postId/comments?page=$page',
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    try {
+      return CommunityPage<CommunityComment>.fromJson(
+        response,
+        'comments',
+        CommunityComment.fromJson,
+      );
+    } on FormatException catch (error) {
+      throw AuthApiException(error.message);
+    }
+  }
+
+  Future<CommunityComment> createCommunityComment({
+    required String token,
+    required int postId,
+    required String content,
+    int? parentCommentId,
+  }) async {
+    final response = await _post(
+      '/community/posts/$postId/comments',
+      {
+        'content': content,
+        if (parentCommentId != null) 'parent_comment_id': parentCommentId,
+      },
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    final comment = response['comment'];
+    if (comment is! Map) {
+      throw const AuthApiException(
+          'The Community comment response was invalid.');
+    }
+    try {
+      return CommunityComment.fromJson(Map<String, dynamic>.from(comment));
+    } on FormatException catch (error) {
+      throw AuthApiException(error.message);
+    }
+  }
+
+  Future<void> deleteCommunityComment({
+    required String token,
+    required int postId,
+    required int commentId,
+  }) async {
+    await _delete(
+      '/community/posts/$postId/comments/$commentId',
+      headers: {'Authorization': 'Bearer $token'},
+    );
+  }
+
+  Future<void> reportCommunityContent({
+    required String token,
+    required String targetType,
+    required int targetId,
+    required String reason,
+    String? details,
+  }) async {
+    await _post(
+      '/community/reports',
+      {
+        'target_type': targetType,
+        'target_id': targetId,
+        'reason': reason,
+        if (details != null && details.isNotEmpty) 'details': details,
+      },
+      headers: {'Authorization': 'Bearer $token'},
+    );
+  }
+
+  Future<CommunityProfile> getCommunityMemberProfile({
+    required String token,
+    required int profileId,
+  }) async {
+    final response = await _get(
+      '/community/profiles/$profileId',
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    return _communityProfileFromResponse(response);
+  }
+
+  Future<CommunityContactStatus> getCommunityContactStatus({
+    required String token,
+    required int userId,
+  }) async {
+    final response = await _get(
+      '/community/members/$userId/contact-status',
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    try {
+      return CommunityContactStatus.fromJson(response);
+    } on FormatException catch (error) {
+      throw AuthApiException(error.message);
+    }
+  }
+
+  Future<CommunityContactRequest> sendCommunityContactRequest({
+    required String token,
+    required int receiverId,
+  }) async {
+    final response = await _post(
+      '/community/contact-requests',
+      {'receiver_id': receiverId},
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    return _communityContactRequestFromResponse(response);
+  }
+
+  Future<List<CommunityContactRequest>> getCommunityContactRequests({
+    required String token,
+    String direction = 'received',
+  }) async {
+    final response = await _get(
+      '/community/contact-requests/$direction',
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    return _communityContactRequestsFromResponse(response, 'requests');
+  }
+
+  Future<List<CommunityContactRequest>> getAllCommunityContactRequests({
+    required String token,
+  }) async {
+    final response = await _get(
+      '/community/contact-requests',
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    return _communityContactRequestsFromResponse(response, 'requests');
+  }
+
+  Future<CommunityContactRequest> acceptCommunityContactRequest({
+    required String token,
+    required int requestId,
+  }) async {
+    final response = await _put(
+      '/community/contact-requests/$requestId/accept',
+      const {},
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    return _communityContactRequestFromResponse(response);
+  }
+
+  Future<CommunityContactRequest> rejectCommunityContactRequest({
+    required String token,
+    required int requestId,
+  }) async {
+    final response = await _put(
+      '/community/contact-requests/$requestId/reject',
+      const {},
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    return _communityContactRequestFromResponse(response);
+  }
+
+  Future<void> cancelCommunityContactRequest({
+    required String token,
+    required int requestId,
+  }) async {
+    await _delete(
+      '/community/contact-requests/$requestId/cancel',
+      headers: {'Authorization': 'Bearer $token'},
+    );
+  }
+
+  Future<List<CommunityContactPerson>> getCommunityContacts({
+    required String token,
+  }) async {
+    final response = await _get(
+      '/community/contacts',
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    final contacts = response['contacts'];
+    if (contacts is! List) {
+      throw const AuthApiException(
+          'The Community contacts response was invalid.');
+    }
+    try {
+      return contacts.map((contact) {
+        if (contact is! Map) {
+          throw const FormatException('The Community contact was invalid.');
+        }
+        return CommunityContactPerson.fromJson(
+          Map<String, dynamic>.from(contact),
+        );
+      }).toList(growable: false);
+    } on FormatException catch (error) {
+      throw AuthApiException(error.message);
+    }
+  }
+
+  Future<void> revokeCommunityContact({
+    required String token,
+    required int userId,
+  }) async {
+    await _delete(
+      '/community/contacts/$userId',
+      headers: {'Authorization': 'Bearer $token'},
+    );
+  }
+
+  Future<bool> blockCommunityMember({
+    required String token,
+    required int userId,
+  }) async {
+    final response = await _post(
+      '/community/blocks/$userId',
+      const {},
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    return response['blocked'] == true;
+  }
+
+  Future<void> unblockCommunityMember({
+    required String token,
+    required int userId,
+  }) async {
+    await _delete(
+      '/community/blocks/$userId',
+      headers: {'Authorization': 'Bearer $token'},
+    );
+  }
+
+  CommunityContactRequest _communityContactRequestFromResponse(
+    Map<String, dynamic> response,
+  ) {
+    final request = response['request'];
+    if (request is! Map) {
+      throw const AuthApiException(
+        'The Community contact request response was invalid.',
+      );
+    }
+    try {
+      return CommunityContactRequest.fromJson(
+        Map<String, dynamic>.from(request),
+      );
+    } on FormatException catch (error) {
+      throw AuthApiException(error.message);
+    }
+  }
+
+  List<CommunityContactRequest> _communityContactRequestsFromResponse(
+    Map<String, dynamic> response,
+    String key,
+  ) {
+    final requests = response[key];
+    if (requests is! List) {
+      throw const AuthApiException(
+        'The Community contact requests response was invalid.',
+      );
+    }
+    try {
+      return requests.map((request) {
+        if (request is! Map) {
+          throw const FormatException('The contact request was invalid.');
+        }
+        return CommunityContactRequest.fromJson(
+          Map<String, dynamic>.from(request),
+        );
+      }).toList(growable: false);
+    } on FormatException catch (error) {
+      throw AuthApiException(error.message);
+    }
+  }
+
+  Future<CommunityPage<CommunityPost>> getCommunityMemberPosts({
+    required String token,
+    required int profileId,
+    int page = 1,
+  }) async {
+    final response = await _get(
+      '/community/profiles/$profileId/posts?page=$page',
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    try {
+      return CommunityPage<CommunityPost>.fromJson(
+        response,
+        'posts',
+        CommunityPost.fromJson,
+      );
+    } on FormatException catch (error) {
+      throw AuthApiException(error.message);
+    }
+  }
+
+  CommunityProfile _communityProfileFromResponse(
+    Map<String, dynamic> response,
+  ) {
+    final profile = response['profile'];
+    if (profile is! Map) {
+      throw const AuthApiException(
+          'The Community profile response was invalid.');
+    }
+    try {
+      return CommunityProfile.fromJson(Map<String, dynamic>.from(profile));
+    } on FormatException catch (error) {
+      throw AuthApiException(error.message);
+    }
+  }
+
+  CommunityPost _communityPostFromResponse(Map<String, dynamic> response) {
+    final post = response['post'];
+    if (post is! Map) {
+      throw const AuthApiException('The Community post response was invalid.');
+    }
+    try {
+      return CommunityPost.fromJson(Map<String, dynamic>.from(post));
+    } on FormatException catch (error) {
+      throw AuthApiException(error.message);
+    }
+  }
+
+  Future<Map<String, dynamic>> _communityMultipartPost(
+    String path, {
+    required String token,
+    required Map<String, String> fields,
+    XFile? image,
+    String imageField = 'image',
+    List<XFile> images = const [],
+    String imagesField = 'images[]',
+  }) async {
+    final request = http.MultipartRequest('POST', _apiUri(path))
+      ..headers.addAll({
+        'Accept': 'application/json',
+        'Authorization': 'Bearer $token',
+      })
+      ..fields.addAll(fields);
+    if (image != null) {
+      request.files.add(http.MultipartFile.fromBytes(
+        imageField,
+        await image.readAsBytes(),
+        filename: image.name,
+      ));
+    }
+    for (final image in images) {
+      request.files.add(http.MultipartFile.fromBytes(
+        imagesField,
+        await image.readAsBytes(),
+        filename: image.name,
+      ));
+    }
+    try {
+      final streamed = await _client.send(request).timeout(_uploadTimeout);
+      return _decodeResponse(
+        await http.Response.fromStream(streamed).timeout(_uploadTimeout),
+      );
+    } on SocketException {
+      throw const AuthApiException(
+        'Cannot reach the API. Check that Laravel is running and the API URL is correct.',
+      );
+    } on TimeoutException {
+      throw const AuthApiException('The upload timed out. Try again.');
+    } on http.ClientException {
+      throw const AuthApiException(
+        'Could not connect to the API. Check the device network and API URL.',
+      );
+    }
+  }
 
   Uri _apiUri(String path) {
     try {
@@ -109,7 +1262,7 @@ class AuthApiService {
   }
 
   Future<Map<String, dynamic>> getCurrentUser({required String token}) async {
-    final response = await _get('/user', headers: {
+    final response = await _get('/me', headers: {
       'Authorization': 'Bearer $token',
     });
 
@@ -118,6 +1271,40 @@ class AuthApiService {
     }
 
     return response;
+  }
+
+  Future<Map<String, dynamic>> getAccountAccess({
+    required String token,
+  }) async {
+    final response = await _get('/account/access', headers: {
+      'Authorization': 'Bearer $token',
+    });
+    if (response['has_main_app_access'] is! bool ||
+        response['roles'] is! List) {
+      throw const AuthApiException('The account access response was invalid.');
+    }
+    return response;
+  }
+
+  Future<Map<String, dynamic>> upgradeAccount({
+    required String token,
+    required String role,
+    required String name,
+    required String location,
+  }) async {
+    final response = await _post(
+      '/account/upgrade',
+      {
+        'role': role,
+        'name': name,
+        'location': location,
+      },
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    final user = response['user'];
+    if (user is Map<String, dynamic>) return user;
+    if (user is Map) return Map<String, dynamic>.from(user);
+    throw const AuthApiException('The account upgrade response was invalid.');
   }
 
   Future<void> logout({required String token}) async {
@@ -1422,6 +2609,41 @@ class AuthApiService {
     try {
       response = await _client
           .patch(
+            uri,
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+              ...headers,
+            },
+            body: jsonEncode(body),
+          )
+          .timeout(_timeout);
+    } on SocketException {
+      throw const AuthApiException(
+        'Cannot reach the API. Check that Laravel is running and the API URL is correct.',
+      );
+    } on TimeoutException {
+      throw const AuthApiException('The API request timed out. Try again.');
+    } on http.ClientException {
+      throw const AuthApiException(
+        'Could not connect to the API. Check the device network and API URL.',
+      );
+    }
+
+    return _decodeResponse(response);
+  }
+
+  Future<Map<String, dynamic>> _put(
+    String path,
+    Map<String, dynamic> body, {
+    Map<String, String> headers = const {},
+  }) async {
+    final uri = _apiUri(path);
+    late final http.Response response;
+
+    try {
+      response = await _client
+          .put(
             uri,
             headers: {
               'Accept': 'application/json',

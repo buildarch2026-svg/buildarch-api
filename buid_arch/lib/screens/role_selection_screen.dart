@@ -18,11 +18,13 @@ class RoleSelectionScreen extends StatefulWidget {
     super.key,
     this.phoneNumber,
     this.authFlow = AuthFlow.mobileLogin,
+    this.isUpgrade = false,
   });
 
   /// Already-verified number for mobile login, if this flow has one.
   final String? phoneNumber;
   final AuthFlow authFlow;
+  final bool isUpgrade;
 
   @override
   State<RoleSelectionScreen> createState() => _RoleSelectionScreenState();
@@ -48,6 +50,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
           phoneNumber: widget.phoneNumber,
           authFlow: widget.authFlow,
           role: role,
+          isUpgrade: widget.isUpgrade,
         ),
       ),
     );
@@ -93,6 +96,16 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
         const Positioned.fill(
           child: CustomPaint(painter: SetupHeroPainter()),
         ),
+        Positioned(
+          top: topInset + 4,
+          left: 8,
+          child: IconButton(
+            tooltip: 'Back',
+            onPressed: () => Navigator.of(context).maybePop(),
+            icon: const Icon(Icons.arrow_back),
+            color: AppColors.surface,
+          ),
+        ),
         Padding(
           padding: EdgeInsets.fromLTRB(24, topInset + 32, 24, 24),
           child: Center(
@@ -100,7 +113,9 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'Choose Your Role',
+                  widget.isUpgrade
+                      ? 'Choose Your Main App Role'
+                      : 'Choose Your Role',
                   textAlign: TextAlign.center,
                   style: AppTextStyles.cardTitle.copyWith(
                     fontSize: 24,
@@ -157,7 +172,9 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
             ),
           ),
           Text(
-            'Who are you?',
+            widget.isUpgrade
+                ? 'How would you like to use Build Arch?'
+                : 'Who are you?',
             style: AppTextStyles.cardTitle.copyWith(
               height: 28 / 22,
               letterSpacing: -0.55,

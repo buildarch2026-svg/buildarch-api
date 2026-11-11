@@ -9,10 +9,12 @@ class ProfileScreen extends StatelessWidget {
     super.key,
     required this.user,
     required this.onLogout,
+    this.onUpgrade,
   });
 
   final Map<String, dynamic> user;
   final VoidCallback onLogout;
+  final VoidCallback? onUpgrade;
 
   String _value(String key, String fallback) {
     final value = user[key];
@@ -101,6 +103,17 @@ class ProfileScreen extends StatelessWidget {
             label: 'Role',
             value: role,
           ),
+          if (onUpgrade != null) ...[
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: onUpgrade,
+              icon: const Icon(Icons.apartment_outlined),
+              label: const Text('Switch to Main App'),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           OutlinedButton.icon(
             onPressed: onLogout,

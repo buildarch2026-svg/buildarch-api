@@ -132,17 +132,6 @@ class _DashboardTile extends StatelessWidget {
                       : AppColors.onSurfaceVariant,
                 ),
               ),
-              if (onTap == null) ...[
-                const SizedBox(height: 3),
-                Text(
-                  'Coming soon',
-                  style: AppTextStyles.labelTechnical.copyWith(
-                    fontSize: 9,
-                    letterSpacing: 0,
-                    color: AppColors.outline,
-                  ),
-                ),
-              ],
             ],
           ),
         ),

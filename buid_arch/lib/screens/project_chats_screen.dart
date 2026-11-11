@@ -3,10 +3,15 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../models/project_chat_conversation.dart';
+import '../navigation/community_navigation.dart';
+import '../navigation/profile_navigation.dart';
 import '../services/auth_api_service.dart';
 import '../services/auth_session_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
+import '../widgets/app_bottom_nav.dart';
+import 'all_project_files_screen.dart';
+import 'projects_screen.dart';
 import 'project_direct_chat_screen.dart';
 import 'project_group_voice_chat_screen.dart';
 
@@ -167,6 +172,27 @@ class _ProjectChatsScreenState extends State<ProjectChatsScreen>
                           ],
                         ),
                 ),
+      bottomNavigationBar: AppBottomNav(
+        current: AppTab.chat,
+        onTap: (tab) {
+          if (tab == AppTab.chat) return;
+          if (tab == AppTab.projects) {
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute<void>(builder: (_) => const ProjectsScreen()),
+            );
+          } else if (tab == AppTab.files) {
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute<void>(
+                builder: (_) => const AllProjectFilesScreen(),
+              ),
+            );
+          } else if (tab == AppTab.community) {
+            CommunityNavigation.open(context, replace: true);
+          } else {
+            ProfileNavigation.open(context);
+          }
+        },
+      ),
     );
   }
 

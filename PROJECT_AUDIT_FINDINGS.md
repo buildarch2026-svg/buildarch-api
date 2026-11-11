@@ -38,13 +38,16 @@ The project update endpoint validates latitude and longitude independently with 
 
 **Recommended update:** Treat latitude and longitude as a pair: require both when either is provided, or clear both when either is explicitly cleared. Add tests for partial updates and null values.
 
-#### Duplicate transaction attempts can cause an unhandled database error
+#### Duplicate transaction attempts return the existing record
 
 **Locations:** [`ProjectTransactionController.php`](./buid_arch_api/app/Http/Controllers/Api/ProjectTransactionController.php), [`2026_10_28_000004_add_upi_fields_to_project_transactions_table.php`](./buid_arch_api/database/migrations/2026_10_28_000004_add_upi_fields_to_project_transactions_table.php)
 
-The database enforces uniqueness for `attempt_id`, but the create endpoint does not handle a repeated attempt ID. Retrying a request with the same ID can therefore result in a database exception instead of a defined idempotent response or conflict.
+The API now checks an existing `attempt_id` before inserting and handles a
+concurrent uniqueness conflict. A retry with matching transaction details
+returns the existing transaction; reuse for different details returns HTTP 409.
+`ProjectTransactionApiTest` covers repeated attempt IDs.
 
-**Recommended update:** Define retry behavior explicitly, preferably making repeated attempts idempotent, and add a duplicate-attempt test.
+**Status:** Resolved in the current code.
 
 #### A push-service test fails because no device token is registered
 
@@ -52,7 +55,7 @@ The database enforces uniqueness for `attempt_id`, but the create endpoint does 
 
 The full Laravel suite has one failing assertion in `chat push is queued only when server credentials are configured`. The test expects a push job for a user with no registered device token, while the push service intentionally skips users without tokens.
 
-**Recommended update:** Register a test device token before asserting that a job is queued, or change the assertion to verify that no job is queued without a token. xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+**Recommended update:** Register a test device token before asserting that a job is queued, or change the assertion to verify that no job is queued without a token.
 
 ### Improvement opportunities
 

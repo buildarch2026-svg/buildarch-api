@@ -1,12 +1,11 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../theme/app_colors.dart';
 
-/// Dashed blueprint grid, compass rings, crosshairs and CAD labels
-/// behind the "Secure Your Account" hero.
+/// Dashed blueprint grid, compass rings, and crosshairs behind the
+/// "Secure Your Account" hero.
 class SetupHeroPainter extends CustomPainter {
   const SetupHeroPainter();
 
@@ -70,36 +69,17 @@ class SetupHeroPainter extends CustomPainter {
       cross,
     );
     canvas.drawCircle(center, 3, Paint()..color = copper25);
-
-    // CAD labels
-    _label(canvas, 'R-102.4', Offset(size.width * 0.72, size.height * 0.36));
-    _label(canvas, 'SEC // A-02', Offset(size.width * 0.24, size.height * 0.62));
   }
 
-  void _label(Canvas canvas, String text, Offset baselineOrigin) {
-    final tp = TextPainter(
-      text: TextSpan(
-        text: text,
-        style: GoogleFonts.inter(
-          fontSize: 8,
-          letterSpacing: 1,
-          color: AppColors.copper.withAlpha(64),
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    final baseline = tp.computeDistanceToActualBaseline(TextBaseline.alphabetic);
-    tp.paint(canvas, Offset(baselineOrigin.dx, baselineOrigin.dy - baseline));
-  }
-
-  void _dashedCircle(Canvas canvas, Offset center, double radius, Color color,
-      double width,
+  void _dashedCircle(
+      Canvas canvas, Offset center, double radius, Color color, double width,
       {required double dash, required double gap}) {
     final paint = Paint()
       ..color = color
       ..style = PaintingStyle.stroke
       ..strokeWidth = width;
-    final path = Path()..addOval(Rect.fromCircle(center: center, radius: radius));
+    final path = Path()
+      ..addOval(Rect.fromCircle(center: center, radius: radius));
     for (final metric in path.computeMetrics()) {
       double d = 0;
       while (d < metric.length) {

@@ -7,12 +7,18 @@ import '../services/auth_session_service.dart';
 import '../services/projects_store.dart';
 import '../services/user_role_service.dart';
 import '../navigation/profile_navigation.dart';
+import '../navigation/community_navigation.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
+import '../widgets/app_bottom_nav.dart';
+import '../widgets/community_preview_card.dart';
+import '../widgets/job_portal_preview_card.dart';
 import '../widgets/project_card.dart';
 import '../widgets/notification_action_button.dart';
 import 'create_project_screen.dart';
 import 'project_dashboard_screen.dart';
+import 'all_project_files_screen.dart';
+import 'project_chats_screen.dart';
 
 enum _ProjectManagementAction { archive, delete, restore }
 
@@ -214,23 +220,72 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
         ),
         body: SafeArea(
           top: false,
-          child: store.isLoading || _isLoadingRole
-              ? const Center(
-                  child: CircularProgressIndicator(color: AppColors.primary),
-                )
-              : _roleLoadFailed
-                  ? _buildRoleLoadError()
-                  : store.errorMessage != null
-                      ? _buildLoadError(store.errorMessage!)
-                      : TabBarView(
-                          children: [
-                            _buildMyProjectsTab(store),
-                            _buildJoinedProjectsTab(store),
-                          ],
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                child: SizedBox(
+                  height: 190,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    children: const [
+                      SizedBox(
+                        width: 310,
+                        child: JobPortalPreviewCard(),
+                      ),
+                      SizedBox(width: 8),
+                      SizedBox(
+                        width: 310,
+                        child: CommunityPreviewCard(),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Expanded(
+                child: store.isLoading || _isLoadingRole
+                    ? const Center(
+                        child: CircularProgressIndicator(
+                          color: AppColors.primary,
                         ),
+                      )
+                    : _roleLoadFailed
+                        ? _buildRoleLoadError()
+                        : store.errorMessage != null
+                            ? _buildLoadError(store.errorMessage!)
+                            : TabBarView(
+                                children: [
+                                  _buildMyProjectsTab(store),
+                                  _buildJoinedProjectsTab(store),
+                                ],
+                              ),
+              ),
+            ],
+          ),
+        ),
+        bottomNavigationBar: AppBottomNav(
+          current: AppTab.projects,
+          onTap: _onTabSelected,
         ),
       ),
     );
+  }
+
+  void _onTabSelected(AppTab tab) {
+    if (tab == AppTab.projects) return;
+    if (tab == AppTab.community) {
+      CommunityNavigation.open(context);
+    } else if (tab == AppTab.chat) {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(builder: (_) => const ProjectChatsScreen()),
+      );
+    } else if (tab == AppTab.files) {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(builder: (_) => const AllProjectFilesScreen()),
+      );
+    } else {
+      ProfileNavigation.open(context);
+    }
   }
 
   Widget _buildLoadError(String message) {
@@ -293,7 +348,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
 
   Widget _buildMyProjectsTab(ProjectsStore store) {
     if (_userRole == AppRole.contractor || _userRole == AppRole.designer) {
-      return _buildRoleProjectsComingSoon();
+      return _buildRoleProjectsUnavailable();
     }
 
     final ownedProjects =
@@ -409,12 +464,12 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
     );
   }
 
-  Widget _buildRoleProjectsComingSoon() {
+  Widget _buildRoleProjectsUnavailable() {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
       children: [
         Text(
-          'Coming soon',
+          'Project management unavailable',
           style: AppTextStyles.cardTitle.copyWith(
             fontSize: 25,
             color: AppColors.textPrimary,
@@ -424,12 +479,12 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
         Card(
           color: AppColors.surfaceContainerLow,
           child: ListTile(
-            leading: const Icon(Icons.upcoming_outlined),
+            leading: const Icon(Icons.info_outline),
             title: const Text('My Projects'),
             subtitle: Text(
-              'Creating and managing projects for '
-              '${_userRole!.label.toLowerCase()} accounts is coming soon. '
-              'Use Joined Projects to open projects shared with you.',
+              'Project creation and management are not available for '
+              '${_userRole!.label} accounts. Use Joined Projects to open '
+              'projects shared with you.',
             ),
           ),
         ),

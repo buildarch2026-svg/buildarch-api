@@ -4,6 +4,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../models/project.dart';
 import '../navigation/profile_navigation.dart';
+import '../navigation/community_navigation.dart';
 import 'project_invitations_screen.dart';
 import 'project_documents_screen.dart';
 import 'project_chats_screen.dart';
@@ -14,6 +15,7 @@ import '../widgets/app_bottom_nav.dart';
 import '../widgets/dashboard_hero.dart';
 import '../widgets/dashboard_quick_action.dart';
 import '../widgets/notification_action_button.dart';
+import '../widgets/community_preview_card.dart';
 import 'all_project_files_screen.dart';
 import 'project_members_screen.dart';
 
@@ -23,12 +25,6 @@ class ProjectDashboardScreen extends StatelessWidget {
   const ProjectDashboardScreen({super.key, required this.project});
 
   final Project project;
-
-  void _comingSoon(BuildContext context, String what) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text('$what - coming soon')));
-  }
 
   Future<void> _shareProjectLocation(BuildContext context) async {
     final destination = project.latitude != null && project.longitude != null
@@ -178,6 +174,11 @@ class ProjectDashboardScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 24),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20),
+              child: CommunityPreviewCard(),
+            ),
+            const SizedBox(height: 12),
           ],
         ),
       ),
@@ -196,10 +197,10 @@ class ProjectDashboardScreen extends StatelessWidget {
                 builder: (_) => AllProjectFilesScreen(returnProject: project),
               ),
             );
+          } else if (tab == AppTab.community) {
+            CommunityNavigation.open(context);
           } else if (tab == AppTab.profile) {
             ProfileNavigation.open(context);
-          } else if (tab != AppTab.projects) {
-            _comingSoon(context, tab.name);
           }
         },
       ),

@@ -12,6 +12,8 @@ import '../widgets/avatar_shield.dart';
 import '../widgets/dashed_circle.dart';
 import '../widgets/unlock_hero_painter.dart';
 import 'home_screen.dart';
+import 'community_screen.dart';
+import 'account_type_selection_screen.dart';
 import 'login_screen.dart';
 
 /// Returning-user screen: unlock the app with fingerprint or phone PIN.
@@ -21,6 +23,8 @@ class UnlockScreen extends StatefulWidget {
     this.userName = 'John Doe',
     this.userRole = 'Project Manager',
     this.autoPrompt = true,
+    this.isCommunityOnly = false,
+    this.needsAccountType = false,
   });
 
   /// TODO: replace with the signed-in user's real name and role.
@@ -29,6 +33,8 @@ class UnlockScreen extends StatefulWidget {
 
   /// Opens the system fingerprint prompt as soon as the screen appears.
   final bool autoPrompt;
+  final bool isCommunityOnly;
+  final bool needsAccountType;
 
   @override
   State<UnlockScreen> createState() => _UnlockScreenState();
@@ -40,11 +46,6 @@ class _UnlockScreenState extends State<UnlockScreen>
     vsync: this,
     duration: const Duration(seconds: 20),
   )..repeat();
-
-  late final AnimationController _pulse = AnimationController(
-    vsync: this,
-    duration: const Duration(seconds: 2),
-  )..repeat(reverse: true);
 
   late final AnimationController _shake = AnimationController(
     vsync: this,
@@ -85,7 +86,6 @@ class _UnlockScreenState extends State<UnlockScreen>
   void dispose() {
     if (widget.autoPrompt) WidgetsBinding.instance.removeObserver(this);
     _halo.dispose();
-    _pulse.dispose();
     _shake.dispose();
     super.dispose();
   }
@@ -151,8 +151,13 @@ class _UnlockScreenState extends State<UnlockScreen>
   }
 
   void _goHome() {
+    final destination = widget.isCommunityOnly
+        ? const CommunityScreen()
+        : widget.needsAccountType
+            ? const AccountTypeSelectionScreen()
+            : const HomeScreen();
     Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const HomeScreen()),
+      MaterialPageRoute(builder: (_) => destination),
       (route) => false,
     );
   }
@@ -204,17 +209,6 @@ class _UnlockScreenState extends State<UnlockScreen>
                             UnlockHeroPainter(avatarCenterY: avatarCenterY),
                       ),
                     ),
-                    // Corner coordinate labels
-                    Positioned(
-                      top: padding.top + 16,
-                      left: 16,
-                      child: _cornerLabel('SEC // AUTH-03'),
-                    ),
-                    Positioned(
-                      top: padding.top + 16,
-                      right: 16,
-                      child: _cornerLabel('R-102.4 // LAT.N'),
-                    ),
                     Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -232,16 +226,6 @@ class _UnlockScreenState extends State<UnlockScreen>
     );
   }
 
-  Widget _cornerLabel(String text) {
-    return Text(
-      text,
-      style: AppTextStyles.labelTechnical.copyWith(
-        color: AppColors.copper.withAlpha(153),
-        letterSpacing: 1.0,
-      ),
-    );
-  }
-
   // ------------------------------------------------------------------ hero
 
   Widget _buildHero(double topInset) {
@@ -251,7 +235,6 @@ class _UnlockScreenState extends State<UnlockScreen>
         width: double.infinity,
         child: Column(
           children: [
-            _sessionPill(),
             const SizedBox(height: 24),
             AvatarShield(initials: _initials),
             const SizedBox(height: 16),
@@ -284,42 +267,6 @@ class _UnlockScreenState extends State<UnlockScreen>
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _sessionPill() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      decoration: BoxDecoration(
-        color: AppColors.darkBrown,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: AppColors.copper.withAlpha(77)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          FadeTransition(
-            opacity: Tween<double>(begin: 1, end: 0.4).animate(_pulse),
-            child: Container(
-              width: 8,
-              height: 8,
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppColors.copper,
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            'SESSION // 03',
-            softWrap: false,
-            style: AppTextStyles.labelTechnical.copyWith(
-              color: AppColors.tertiaryFixedDim,
-              letterSpacing: 1.0,
-            ),
-          ),
-        ],
       ),
     );
   }

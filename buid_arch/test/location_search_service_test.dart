@@ -82,5 +82,57 @@ void main() {
         ),
       );
     });
+
+    test('reverse-geocodes coordinates and parses address details', () async {
+      late Uri requestedUri;
+      final service = LocationSearchService(
+        client: MockClient((request) async {
+          requestedUri = request.url;
+          return http.Response(
+            jsonEncode({
+              'display_name': 'Marine Drive, Kochi, Kerala, India',
+              'lat': '9.9312',
+              'lon': '76.2673',
+              'address': {
+                'road': 'Marine Drive',
+                'city': 'Kochi',
+                'state': 'Kerala',
+                'country': 'India',
+              },
+            }),
+            200,
+          );
+        }),
+      );
+
+      final result =
+          await service.reverse(latitude: 9.9312, longitude: 76.2673);
+
+      expect(requestedUri.path, '/reverse');
+      expect(requestedUri.queryParameters['lat'], '9.9312');
+      expect(requestedUri.queryParameters['lon'], '76.2673');
+      expect(requestedUri.queryParameters['format'], 'jsonv2');
+      expect(result.name, 'Marine Drive, Kochi, Kerala, India');
+      expect(result.street, 'Marine Drive');
+      expect(result.city, 'Kochi');
+      expect(result.state, 'Kerala');
+      expect(result.country, 'India');
+    });
+
+    test('rejects invalid coordinates before making a request', () async {
+      var requested = false;
+      final service = LocationSearchService(
+        client: MockClient((_) async {
+          requested = true;
+          return http.Response('{}', 200);
+        }),
+      );
+
+      await expectLater(
+        service.reverse(latitude: 91, longitude: 0),
+        throwsA(isA<LocationSearchException>()),
+      );
+      expect(requested, isFalse);
+    });
   });
 }

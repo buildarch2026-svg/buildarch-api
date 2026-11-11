@@ -16,6 +16,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->alias([
             'project.active' => EnsureProjectIsActive::class,
+            'main-app' => \App\Http\Middleware\EnsureMainAppAccess::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

@@ -34,17 +34,25 @@ That requires a payment provider and a supported payment method. A manually
 entered or externally completed payment can be recorded, but is not proof that
 the app processed or verified it.
 
-## Current application state observed
+## Current application state observed (6 November 2026)
 
-- The project dashboard has a **Pay** quick action, but it is currently a
-  placeholder and does not start a payment.
-- I found no transaction model, transaction API endpoints, or payment-provider
-  integration in the current Flutter or Laravel code.
-- The app already has projects, project owners and accepted members, project
-  files, and project chat. Those provide a natural basis for associating
-  payments with projects and showing related records.
-- Therefore, transaction tracking and actual in-app payment processing are
-  new functionality; they are not currently available.
+- The project dashboard's **Pay** action opens a project payment history.
+- The app can create manual/external payment records and scan a shop's UPI QR
+  code to launch Google Pay when it is installed.
+- The Laravel API stores project transactions, identifies the authenticated
+  payer, returns the payment history, and supports idempotent attempt IDs.
+- The app submits the payment-app result to the API to update provider-payment
+  status. The reviewed source does not show server-side provider verification
+  or a webhook/reconciliation flow, so a client-reported success is not
+  authoritative settlement evidence.
+- The history shows a total of completed records and a basic list, but lacks
+  search/filtering, a transaction detail/receipt view, and payer display.
+- Projects, owners, accepted members, files, and chat are already implemented
+  and provide the basis for project-scoped transaction visibility.
+
+Transaction tracking and payment-app handoff are partially implemented.
+Provider-verified payment processing, settlement/reconciliation, receipts,
+and richer transaction-history UX remain to be designed and delivered.
 
 ## Proposed user experience
 

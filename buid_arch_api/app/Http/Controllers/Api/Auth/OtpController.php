@@ -139,6 +139,7 @@ class OtpController extends Controller
                         'email' => $user->email,
                         'location' => $user->location,
                         'role' => $user->role,
+                        'community_registered' => $user->communityProfile()->exists(),
                         'profile_complete' => filled($user->name)
                             && filled($user->location)
                             && filled($user->role)
@@ -283,6 +284,7 @@ class OtpController extends Controller
                 'google_id' => $user->google_id,
                 'location' => $user->location,
                 'role' => $user->role,
+                'community_registered' => $user->communityProfile()->exists(),
                 'profile_complete' => filled($user->name)
                     && filled($user->location)
                     && filled($user->role)

@@ -4,6 +4,7 @@ import '../models/project.dart';
 import '../models/project_document.dart';
 import '../models/project_member.dart';
 import '../models/project_message.dart';
+import '../navigation/community_navigation.dart';
 import '../navigation/profile_navigation.dart';
 import '../services/auth_api_service.dart';
 import '../services/auth_session_service.dart';
@@ -14,11 +15,12 @@ import 'project_documents_screen.dart';
 import 'project_direct_chat_screen.dart';
 import 'project_group_voice_chat_screen.dart';
 import 'project_chats_screen.dart';
+import 'projects_screen.dart';
 
 class AllProjectFilesScreen extends StatefulWidget {
-  const AllProjectFilesScreen({super.key, required this.returnProject});
+  const AllProjectFilesScreen({super.key, this.returnProject});
 
-  final Project returnProject;
+  final Project? returnProject;
 
   @override
   State<AllProjectFilesScreen> createState() => _AllProjectFilesScreenState();
@@ -186,11 +188,22 @@ class _AllProjectFilesScreenState extends State<AllProjectFilesScreen> {
       );
       return;
     }
+    if (tab == AppTab.projects) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => const ProjectsScreen(),
+        ),
+      );
+      return;
+    }
     if (tab == AppTab.profile) {
       ProfileNavigation.open(context);
       return;
     }
-    Navigator.of(context).pop();
+    if (tab == AppTab.community) {
+      CommunityNavigation.open(context, replace: true);
+      return;
+    }
   }
 
   @override

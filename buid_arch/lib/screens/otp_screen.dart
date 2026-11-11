@@ -11,7 +11,9 @@ import '../theme/app_text_styles.dart';
 import '../theme/app_theme.dart';
 import '../widgets/auth_button.dart';
 import '../widgets/otp_box_row.dart';
+import 'account_type_selection_screen.dart';
 import 'home_screen.dart';
+import 'community_screen.dart';
 import 'role_selection_screen.dart';
 
 /// "Verify Your Number" - 6-digit OTP entry after the mobile number screen.
@@ -118,6 +120,8 @@ class _OtpScreenState extends State<OtpScreen> {
     if (_code.length != _otpLength || _verifying) return;
 
     var profileComplete = false;
+    var hasMainAppRole = false;
+    var isCommunityAccount = false;
     setState(() {
       _verifying = true;
       _hasError = false;
@@ -133,6 +137,9 @@ class _OtpScreenState extends State<OtpScreen> {
       final token = session['token'] as String;
       final user = session['user'] as Map<String, dynamic>;
       profileComplete = user['profile_complete'] as bool;
+      hasMainAppRole = user['role'] != null && user['role'] != '';
+      isCommunityAccount = user['community_registered'] == true &&
+          (user['role'] == null || user['role'] == '');
       await AuthSessionService.instance.saveSession(token: token, user: user);
     } on AuthApiException catch (error) {
       if (!mounted) return;
@@ -149,10 +156,17 @@ class _OtpScreenState extends State<OtpScreen> {
 
     final destination = profileComplete
         ? const HomeScreen()
-        : RoleSelectionScreen(
-            phoneNumber: widget.phoneNumber,
-            authFlow: widget.authFlow,
-          );
+        : hasMainAppRole
+            ? RoleSelectionScreen(
+                phoneNumber: widget.phoneNumber,
+                authFlow: widget.authFlow,
+              )
+            : isCommunityAccount
+                ? const CommunityScreen()
+                : AccountTypeSelectionScreen(
+                    phoneNumber: widget.phoneNumber,
+                    authFlow: widget.authFlow,
+                  );
 
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(
@@ -236,7 +250,7 @@ class _OtpScreenState extends State<OtpScreen> {
                 ),
                 children: [
                   const TextSpan(
-                      text: 'Enter the 6-digit code sent via WhatsApp to '),
+                      text: 'Enter the 6-digit verification code sent to '),
                   TextSpan(
                     text: widget.phoneNumber,
                     style: const TextStyle(
@@ -291,24 +305,14 @@ class _OtpScreenState extends State<OtpScreen> {
               ),
             ),
           ),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Enter Verification Code',
-                style: AppTextStyles.bodyMd.copyWith(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 13 * 0.04,
-                  color: AppColors.onSurfaceVariant,
-                ),
-              ),
-              Text(
-                'WHATSAPP TIMEOUT 60S',
-                style:
-                    AppTextStyles.labelTechnical.copyWith(letterSpacing: 1.0),
-              ),
-            ],
+          Text(
+            'Enter Verification Code',
+            style: AppTextStyles.bodyMd.copyWith(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 13 * 0.04,
+              color: AppColors.onSurfaceVariant,
+            ),
           ),
           const SizedBox(height: 10),
           OtpBoxRow(
@@ -387,67 +391,6 @@ class _OtpScreenState extends State<OtpScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: AppColors.surfaceContainer,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(Icons.lock_outline,
-                      size: 18, color: AppColors.primaryContainer),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Flexible(
-                            child: Text(
-                              'Encrypted Dispatch Protocol',
-                              style: AppTextStyles.bodySm.copyWith(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.onSurface,
-                              ),
-                            ),
-                          ),
-                          Text(
-                            'ISO-19650',
-                            style: AppTextStyles.labelTechnical.copyWith(
-                              color: AppColors.primaryContainer,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Secure 6-digit cryptographic verification backed by '
-                        'enterprise architectural workspace permissions.',
-                        style: AppTextStyles.bodySm.copyWith(
-                          color: AppColors.onSurfaceVariant,
-                          height: 1.3,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
           Opacity(
             opacity: canVerify ? 1 : 0.4,
             child: IgnorePointer(
@@ -471,14 +414,6 @@ class _OtpScreenState extends State<OtpScreen> {
                     : const Icon(Icons.arrow_forward,
                         size: 18, color: Colors.white),
               ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Center(
-            child: Text(
-              'BUILD ARCH V2.4 // TELEMETRY GATEWAY - ISO-19650 COMPLIANT',
-              textAlign: TextAlign.center,
-              style: AppTextStyles.labelTechnical.copyWith(letterSpacing: 0.6),
             ),
           ),
         ],

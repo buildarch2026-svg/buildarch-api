@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 
 import 'models/app_role.dart';
 import 'screens/home_screen.dart';
+import 'screens/account_type_selection_screen.dart';
+import 'screens/community_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/unlock_screen.dart';
 import 'services/app_lock_service.dart';
@@ -69,6 +71,10 @@ class _StartupGateState extends State<_StartupGate> {
       sessionStatus: sessionStatus,
       userName: _userName(user?['name']),
       userRole: _userRole(user?['role']),
+      isCommunityOnly:
+          user?['role'] == null && user?['community_registered'] == true,
+      needsAccountType:
+          user?['role'] == null && user?['community_registered'] != true,
     );
   }
 
@@ -129,6 +135,8 @@ class _StartupGateState extends State<_StartupGate> {
               lockEnabled: state.lockEnabled,
               userName: state.userName,
               userRole: state.userRole,
+              isCommunityOnly: state.isCommunityOnly,
+              needsAccountType: state.needsAccountType,
             ),
           );
         }
@@ -138,28 +146,49 @@ class _StartupGateState extends State<_StartupGate> {
           return UnlockScreen(
             userName: state.userName,
             userRole: state.userRole,
+            isCommunityOnly: state.isCommunityOnly,
+            needsAccountType: state.needsAccountType,
           );
         }
 
         return state.sessionStatus == SavedSessionStatus.authenticated
-            ? const HomeScreen()
+            ? _signedInDestination(
+                isCommunityOnly: state.isCommunityOnly,
+                needsAccountType: state.needsAccountType,
+              )
             : const LoginScreen();
       },
     );
+  }
+
+  Widget _signedInDestination({
+    required bool isCommunityOnly,
+    required bool needsAccountType,
+  }) {
+    if (isCommunityOnly) return const CommunityScreen();
+    if (needsAccountType) return const AccountTypeSelectionScreen();
+    return const HomeScreen();
   }
 
   Widget _continueOffline({
     required bool lockEnabled,
     required String? userName,
     required String? userRole,
+    required bool isCommunityOnly,
+    required bool needsAccountType,
   }) {
     if (lockEnabled) {
       return UnlockScreen(
         userName: userName ?? 'Build Arch User',
         userRole: userRole ?? 'Build Arch Member',
+        isCommunityOnly: isCommunityOnly,
+        needsAccountType: needsAccountType,
       );
     }
-    return const HomeScreen();
+    return _signedInDestination(
+      isCommunityOnly: isCommunityOnly,
+      needsAccountType: needsAccountType,
+    );
   }
 }
 
@@ -169,12 +198,16 @@ class _StartupState {
     required this.sessionStatus,
     required this.userName,
     required this.userRole,
+    required this.isCommunityOnly,
+    required this.needsAccountType,
   });
 
   final bool lockEnabled;
   final SavedSessionStatus sessionStatus;
   final String userName;
   final String userRole;
+  final bool isCommunityOnly;
+  final bool needsAccountType;
 }
 
 class _StartupUnavailableScreen extends StatelessWidget {

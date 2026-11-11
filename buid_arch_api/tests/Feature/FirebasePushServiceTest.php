@@ -27,7 +27,18 @@ class FirebasePushServiceTest extends TestCase
     public function test_chat_push_is_queued_only_when_server_credentials_are_configured(): void
     {
         Queue::fake();
+        config([
+            'services.firebase.project_id' => null,
+            'services.firebase.credentials' => null,
+        ]);
         $user = User::factory()->create();
+        $token = 'fcm-test-device-token';
+        UserPushToken::query()->create([
+            'user_id' => $user->id,
+            'token_hash' => hash('sha256', $token),
+            'token' => $token,
+            'platform' => 'android',
+        ]);
         $service = app(FirebasePushService::class);
         $service->queue($user, $this->payload());
         Queue::assertNothingPushed();

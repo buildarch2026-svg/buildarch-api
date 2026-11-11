@@ -143,12 +143,6 @@ class _MobileNumberScreenState extends State<MobileNumberScreen> {
     }
   }
 
-  void _comingSoon(String what) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text('$what - coming soon')));
-  }
-
   @override
   Widget build(BuildContext context) {
     final padding = MediaQuery.of(context).padding;
@@ -282,16 +276,14 @@ class _MobileNumberScreenState extends State<MobileNumberScreen> {
           ],
           const SizedBox(height: 10),
           Text(
-            'By continuing, you agree to receive a WhatsApp message with '
-            'a verification code.',
+            'By continuing, you agree to receive a one-time verification code '
+            'at this number.',
             style: AppTextStyles.bodySm.copyWith(
               color: AppColors.outline,
               height: 1.4,
             ),
           ),
           const SizedBox(height: 24),
-          _trustBadge(),
-          const SizedBox(height: 16),
           AuthButton(
             label: _sendingOtp ? 'Sending...' : _ctaLabel,
             onPressed: canSend ? _sendOtp : () {},
@@ -345,30 +337,22 @@ class _MobileNumberScreenState extends State<MobileNumberScreen> {
       ),
       child: Row(
         children: [
-          InkWell(
-            onTap: () => _comingSoon('Country selection'),
-            borderRadius: BorderRadius.circular(4),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const IndiaFlag(),
-                  const SizedBox(width: 6),
-                  Text(
-                    '+91',
-                    style: AppTextStyles.bodyMd.copyWith(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: AppColors.textPrimary,
-                    ),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const IndiaFlag(),
+                const SizedBox(width: 6),
+                Text(
+                  '+91',
+                  style: AppTextStyles.bodyMd.copyWith(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: AppColors.textPrimary,
                   ),
-                  const SizedBox(width: 4),
-                  Icon(Icons.keyboard_arrow_down,
-                      size: 16,
-                      color: AppColors.onSurfaceVariant.withAlpha(178)),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
           Container(
@@ -410,58 +394,6 @@ class _MobileNumberScreenState extends State<MobileNumberScreen> {
                     size: 18, color: AppColors.outline.withAlpha(153)),
               ),
             ),
-        ],
-      ),
-    );
-  }
-
-  Widget _trustBadge() {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.copper.withAlpha(46)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 28,
-            height: 28,
-            margin: const EdgeInsets.only(top: 2),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.copper.withAlpha(31),
-            ),
-            child: const Icon(Icons.lock_outline,
-                size: 16, color: AppColors.copper),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Encrypted Dispatch Protocol',
-                  style: AppTextStyles.bodySm.copyWith(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.deepBrown,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'Secure 6-digit OTP delivered via WhatsApp, with SMS as backup.',
-                  style: AppTextStyles.bodySm.copyWith(
-                    fontSize: 11,
-                    height: 1.35,
-                    color: AppColors.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
         ],
       ),
     );

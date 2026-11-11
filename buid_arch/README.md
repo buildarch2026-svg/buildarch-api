@@ -36,6 +36,20 @@ staging server, set its reachable API URL with
 `--dart-define=API_BASE_URL=https://<host>/api`. Release builds reject
 non-HTTPS and loopback API URLs.
 
+## Community and Main App accounts
+
+Sign-in uses one Build Arch account. New users can choose Project Management
+(Home Owner, Contractor, or Designer) or Community after verifying their phone
+or signing in with Google. Community-only accounts keep a null project role and
+are routed to Community on sign-in; selecting a Community profession does not
+grant project-management access.
+
+Community members can choose **Explore Main App** to select a project role and
+complete the existing profile setup. The API upgrades that same account and
+retains its user ID, contact details, Community profile, and posts. Main App
+users can open Community from the navigation; first-time access asks them to
+complete a Community profile without another sign-in.
+
 ## Google sign-in
 Configure the same Google Web OAuth client ID in the Laravel API's
 `GOOGLE_WEB_CLIENT_ID` setting and the Flutter build's
@@ -158,3 +172,42 @@ specifically with
 `php artisan migrate --path=database/migrations/2026_10_28_000005_add_project_lifecycle_state.php --force`;
 it adds archive and soft-delete timestamps and retains existing project
 history.
+
+## Community
+
+The Community tab is available from the main navigation and the dashboard
+preview card. On first entry, sign in with the existing Build Arch account and
+complete the separate Community profile and guidelines acceptance. Members
+can browse and filter public discussions, publish text posts with up to five
+images, like
+posts, comment and reply, report content, and view/edit Community profiles.
+Community profession is independent of the existing account and project roles.
+Community image uploads are private API media, not project files. Private
+messaging between Community members is not included. Members request and accept
+mutual phone contact before either side can see the other's phone number or call.
+Accepted contacts can be reviewed and revoked from **My Contacts**; either
+member can block the other, immediately ending phone access. Calls open the
+device dialer for the member to confirm.
+
+## Construction Job Portal
+
+The **Construction Jobs** dashboard card is available to every signed-in role.
+Every Community member uses their existing Community profile to publish and
+manage vacancies, search by category, employment type, text, location, and
+distance, save jobs, and apply. Hiring and job-seeking are activities, not
+separate profile types or registration flows. Community profiles also hold
+trade, skills, experience, job preferences, notification radius, and nearby-job
+opt-in. Map-selected coordinates support location matching. Candidate contact
+details and resumes remain private.
+
+The Laravel API migration must be applied before using this feature. Job and
+resume files are stored on the private `local` disk; configure durable private
+storage and keep the API's queue worker active for application and nearby-job
+notifications. Apply API migrations with `php artisan migrate`. Configure the
+API's Firebase credentials and keep a queue worker running with
+`php artisan queue:work --queue=notifications,default --tries=3`. The API's
+Laravel scheduler must also run (`php artisan schedule:work`, or a production
+scheduler invoking `php artisan schedule:run` each minute) to expire jobs
+automatically. Nearby notifications require Community-profile opt-in, a
+preferred category, a saved map location and radius, and an active FCM device
+token.

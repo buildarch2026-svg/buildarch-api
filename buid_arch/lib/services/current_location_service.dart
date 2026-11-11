@@ -1,8 +1,11 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
+
+import 'location_search_service.dart';
 
 class CurrentLocationException implements Exception {
   const CurrentLocationException(this.message);
@@ -120,6 +123,33 @@ class CurrentLocationService {
     double latitude,
     double longitude,
   ) async {
+    if (kIsWeb) {
+      try {
+        final result = await LocationSearchService.instance.reverse(
+          latitude: latitude,
+          longitude: longitude,
+        );
+        return CurrentDeviceLocation(
+          address: result.name,
+          latitude: result.latitude,
+          longitude: result.longitude,
+          placeName: result.placeName,
+          street: result.street,
+          locality: result.locality,
+          city: result.city,
+          state: result.state,
+          postalCode: result.postalCode,
+          country: result.country,
+        );
+      } on LocationSearchException {
+        return CurrentDeviceLocation(
+          address: _coordinates(latitude, longitude),
+          latitude: latitude,
+          longitude: longitude,
+        );
+      }
+    }
+
     try {
       final placemarks = await _geocoding.placemarkFromCoordinates(
         latitude,

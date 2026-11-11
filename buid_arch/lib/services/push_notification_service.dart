@@ -6,6 +6,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../screens/project_chats_screen.dart';
+import '../screens/job_portal_job_detail_screen.dart';
+import '../screens/community_contacts_screen.dart';
 import 'auth_api_service.dart';
 import 'auth_session_service.dart';
 
@@ -23,6 +25,7 @@ class PushNotificationService {
   Future<void>? _initializing;
   bool _initialized = false;
   bool _pendingChatNavigation = false;
+  bool _pendingCommunityContactsNavigation = false;
 
   Future<void> initialize() async {
     if (_initialized) return;
@@ -62,6 +65,9 @@ class PushNotificationService {
       await _registerToken(token);
       _listenForTokenRefresh(messaging);
       if (_pendingChatNavigation) _openChatInbox();
+      if (_pendingCommunityContactsNavigation) {
+        unawaited(_openCommunityContactRequests());
+      }
     } on AuthApiException catch (error) {
       debugPrint('Push notification registration failed: ${error.message}');
     } on FirebaseException catch (error) {
@@ -193,8 +199,62 @@ class PushNotificationService {
   }
 
   void _handleNotificationTap(RemoteMessage message) {
-    if (message.data['event'] != 'chat_message') return;
-    unawaited(_openChatInboxIfSignedIn());
+    if ((message.data['notification_type'] as String?)
+            ?.startsWith('community_contact_') ==
+        true) {
+      unawaited(_openCommunityContactRequests());
+      return;
+    }
+    if (message.data['event'] == 'chat_message') {
+      unawaited(_openChatInboxIfSignedIn());
+      return;
+    }
+    if (message.data['job_id'] case final String id
+        when int.tryParse(id) != null) {
+      unawaited(_openJobFromNotification(int.parse(id)));
+    }
+  }
+
+  Future<void> _openJobFromNotification(int jobId) async {
+    final token = await AuthSessionService.instance.readToken();
+    if (token == null || token.isEmpty) return;
+    try {
+      final job = await AuthApiService.instance.getConstructionJob(
+        token: token,
+        jobId: jobId,
+      );
+      final navigator = navigatorKey.currentState;
+      if (navigator == null) return;
+      navigator.push(
+        MaterialPageRoute<void>(
+          builder: (_) => JobPortalJobDetailScreen(
+            token: token,
+            initialJob: job,
+          ),
+        ),
+      );
+    } on AuthApiException catch (error) {
+      messengerKey.currentState?.showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+    }
+  }
+
+  Future<void> _openCommunityContactRequests() async {
+    final token = await AuthSessionService.instance.readToken();
+    if (token == null || token.isEmpty) {
+      _pendingCommunityContactsNavigation = true;
+      return;
+    }
+    _pendingCommunityContactsNavigation = false;
+    navigatorKey.currentState?.push(
+      MaterialPageRoute<void>(
+        builder: (_) => CommunityContactsScreen(
+          token: token,
+          initialTab: 1,
+        ),
+      ),
+    );
   }
 
   Future<void> _openChatInboxIfSignedIn() async {
@@ -241,7 +301,18 @@ class PushNotificationService {
           ),
           action: SnackBarAction(
             label: 'OPEN',
-            onPressed: _openChatInbox,
+            onPressed: () {
+              final jobId = int.tryParse(message.data['job_id'] ?? '');
+              if ((message.data['notification_type'] as String?)
+                      ?.startsWith('community_contact_') ==
+                  true) {
+                unawaited(_openCommunityContactRequests());
+              } else if (jobId != null) {
+                unawaited(_openJobFromNotification(jobId));
+              } else {
+                _openChatInbox();
+              }
+            },
           ),
         ),
       );

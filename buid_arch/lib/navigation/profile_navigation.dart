@@ -8,7 +8,10 @@ import '../screens/profile_screen.dart';
 class ProfileNavigation {
   const ProfileNavigation._();
 
-  static Future<void> open(BuildContext context) async {
+  static Future<void> open(
+    BuildContext context, {
+    VoidCallback? onUpgrade,
+  }) async {
     try {
       final user = await AuthSessionService.instance.readUser();
       if (!context.mounted) return;
@@ -17,6 +20,7 @@ class ProfileNavigation {
           builder: (_) => ProfileScreen(
             user: user ?? const {},
             onLogout: () => logout(context),
+            onUpgrade: onUpgrade,
           ),
         ),
       );

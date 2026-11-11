@@ -1,12 +1,326 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:buid_arch/services/auth_api_service.dart';
 import 'package:buid_arch/services/api_configuration.dart';
+import 'package:buid_arch/models/job_portal.dart';
 import 'package:buid_arch/models/project_type.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 
 void main() {
+  test('job search sends authenticated filters and parses pagination',
+      () async {
+    final client = _RecordingClient(
+      responseBody: {
+        'jobs': {
+          'data': [
+            {
+              'id': 42,
+              'title': 'Site Architect',
+              'employment_type': 'Full Time',
+              'location_name': 'Springfield',
+              'status': 'published',
+              'skills': ['Planning'],
+              'category': {'id': 2, 'slug': 'architect', 'name': 'Architect'},
+              'company': {
+                'id': 7,
+                'user_id': 33,
+                'community_profile_id': 44,
+                'name': 'Build Arch Works',
+              },
+            },
+          ],
+          'current_page': 1,
+          'last_page': 3,
+        },
+        'categories': [],
+      },
+    );
+    final page = await _testService(client).getConstructionJobs(
+      token: 'test-session-token',
+      query: 'architect',
+      category: 'architect',
+      location: 'Springfield',
+      page: 1,
+    );
+
+    final request = client.requests.single as http.Request;
+    expect(request.url.path, '/api/jobs');
+    expect(request.url.queryParameters, {
+      'page': '1',
+      'q': 'architect',
+      'category': 'architect',
+      'sort': 'latest',
+      'location': 'Springfield',
+    });
+    expect(_authorizationHeader(request), startsWith('Bearer '));
+    expect(page.items.single, isA<ConstructionJob>());
+    expect(page.items.single.title, 'Site Architect');
+    expect(page.items.single.category?.name, 'Architect');
+    expect(page.items.single.company?.userId, 33);
+    expect(page.items.single.company?.communityProfileId, 44);
+    expect(page.hasMore, isTrue);
+  });
+
+  test('Community feed sends auth and parses categories and pagination',
+      () async {
+    final client = _RecordingClient(
+      responseBody: {
+        'categories': [
+          {'id': 3, 'slug': 'construction', 'name': 'Construction'},
+        ],
+        'posts': {
+          'data': [],
+          'current_page': 1,
+          'last_page': 2,
+        },
+      },
+    );
+    final result = await _testService(client).getCommunityFeed(
+      token: 'test-session-token',
+      category: 'construction',
+    );
+
+    final request = client.requests.single as http.Request;
+    expect(request.url.path, '/api/community/feed');
+    expect(
+        request.url.queryParameters, {'page': '1', 'category': 'construction'});
+    expect(_authorizationHeader(request), startsWith('Bearer '));
+    expect(result.categories.single.name, 'Construction');
+    expect(result.page.currentPage, 1);
+    expect(result.page.hasMore, isTrue);
+  });
+
+  test('Community categories can load for the profile post composer', () async {
+    final client = _RecordingClient(
+      responseBody: {
+        'categories': [
+          {'id': 3, 'slug': 'construction', 'name': 'Construction'},
+        ],
+      },
+    );
+    final categories = await _testService(client).getCommunityCategories(
+      token: 'test-session-token',
+    );
+
+    final request = client.requests.single as http.Request;
+    expect(request.url.path, '/api/community/categories');
+    expect(_authorizationHeader(request), startsWith('Bearer '));
+    expect(categories.single.name, 'Construction');
+  });
+
+  test('Community post creation uploads multiple image files', () async {
+    final client = _RecordingClient(
+      responseBody: {
+        'post': {
+          'id': 42,
+          'content': 'A post with several images',
+          'image_urls': [
+            'https://example.test/first.jpg',
+            'https://example.test/second.jpg',
+          ],
+          'likes_count': 0,
+          'comments_count': 0,
+          'liked_by_me': false,
+          'author': {
+            'id': 7,
+            'user_id': 9,
+            'display_name': 'Community Member',
+            'profession': 'Designer',
+            'profession_type': 'Designer',
+            'posts_count': 1,
+          },
+        },
+      },
+    );
+    final images = [
+      XFile.fromData(
+        Uint8List.fromList([1, 2, 3]),
+        name: 'first.jpg',
+        mimeType: 'image/jpeg',
+      ),
+      XFile.fromData(
+        Uint8List.fromList([4, 5, 6, 7]),
+        name: 'second.jpg',
+        mimeType: 'image/jpeg',
+      ),
+    ];
+
+    final post = await _testService(client).createCommunityPost(
+      token: 'test-session-token',
+      content: 'A post with several images',
+      images: images,
+    );
+
+    final request = client.requests.single as http.MultipartRequest;
+    expect(request.url.path, '/api/community/posts');
+    expect(_authorizationHeader(request), startsWith('Bearer '));
+    expect(request.files, hasLength(2));
+    expect(request.files.map((file) => file.field), everyElement('images[]'));
+    expect(request.files.map((file) => file.length), [3, 4]);
+    expect(post.imageUrls, [
+      'https://example.test/first.jpg',
+      'https://example.test/second.jpg',
+    ]);
+    expect(post.imageUrl, 'https://example.test/first.jpg');
+  });
+
+  test('Community profile image upload sends image bytes as multipart data',
+      () async {
+    final client = _RecordingClient(
+      responseBody: {
+        'profile': {
+          'id': 42,
+          'user_id': 9,
+          'display_name': 'Arun Kumar',
+          'profession': 'Designer',
+          'profession_type': 'Designer',
+          'posts_count': 0,
+          'profile_image_url': 'https://example.test/profile.jpg',
+        },
+      },
+    );
+    final image = XFile.fromData(
+      Uint8List.fromList([1, 2, 3, 4]),
+      name: 'profile.jpg',
+      mimeType: 'image/jpeg',
+    );
+    final profile = await _testService(client).updateCommunityProfileImage(
+      token: 'test-session-token',
+      image: image,
+    );
+
+    final request = client.requests.single as http.MultipartRequest;
+    expect(request.url.path, '/api/community/profile/image');
+    expect(_authorizationHeader(request), startsWith('Bearer '));
+    expect(request.files.single.field, 'profile_image');
+    expect(request.files.single.length, 4);
+    expect(profile.profileImageUrl, 'https://example.test/profile.jpg');
+  });
+
+  test('Community registration sends the username and selected location',
+      () async {
+    final client = _RecordingClient(
+      responseBody: {
+        'profile': {
+          'id': 42,
+          'user_id': 9,
+          'display_name': 'Malu',
+          'profession': 'Community member',
+          'profession_type': null,
+          'posts_count': 0,
+          'location': 'Kochi, Kerala',
+        },
+      },
+    );
+    final profile = await _testService(client).registerCommunityProfile(
+      token: 'test-session-token',
+      displayName: 'Malu',
+      location: 'Kochi, Kerala',
+    );
+
+    final request = client.requests.single as http.MultipartRequest;
+    expect(request.url.path, '/api/community/profile');
+    expect(_authorizationHeader(request), startsWith('Bearer '));
+    expect(request.fields['display_name'], 'Malu');
+    expect(request.fields['location'], 'Kochi, Kerala');
+    expect(request.fields['guidelines_accepted'], '1');
+    expect(profile.displayName, 'Malu');
+    expect(profile.location, 'Kochi, Kerala');
+  });
+
+  test('Community member profile parses phone details for accepted contacts',
+      () async {
+    final client = _RecordingClient(
+      responseBody: {
+        'profile': {
+          'id': 42,
+          'user_id': 9,
+          'display_name': 'Arun Kumar',
+          'profession': 'Painter',
+          'profession_type': 'Other',
+          'posts_count': 3,
+          'phone_number': '+919876543210',
+        },
+      },
+    );
+    final profile = await _testService(client).getCommunityMemberProfile(
+      token: 'test-session-token',
+      profileId: 42,
+    );
+
+    final request = client.requests.single as http.Request;
+    expect(request.url.path, '/api/community/profiles/42');
+    expect(_authorizationHeader(request), startsWith('Bearer '));
+    expect(profile.userId, 9);
+    expect(profile.phoneNumber, '+919876543210');
+  });
+
+  test('Community contact status uses the authenticated member endpoint',
+      () async {
+    final client = _RecordingClient(
+      responseBody: {
+        'status': 'outgoing_pending',
+        'request_id': 91,
+        'blocked_by_me': false,
+        'phone_number': null,
+      },
+    );
+    final status = await _testService(client).getCommunityContactStatus(
+      token: 'test-session-token',
+      userId: 27,
+    );
+
+    final request = client.requests.single as http.Request;
+    expect(request.url.path, '/api/community/members/27/contact-status');
+    expect(_authorizationHeader(request), 'Bearer test-session-token');
+    expect(status.status, 'outgoing_pending');
+    expect(status.requestId, 91);
+  });
+
+  test('Community call requests post the target and parse member profiles',
+      () async {
+    final client = _RecordingClient(
+      responseBody: {
+        'request': {
+          'id': 91,
+          'requester_id': 14,
+          'receiver_id': 27,
+          'status': 'pending',
+          'requester': {
+            'user_id': 14,
+            'profile_id': 4,
+            'display_name': 'Arun Kumar',
+            'profession': 'Painter',
+            'location': 'Kochi',
+          },
+          'receiver': {
+            'user_id': 27,
+            'profile_id': 9,
+            'display_name': 'Meera',
+            'profession': 'Designer',
+            'location': 'Thrissur',
+          },
+        },
+      },
+    );
+    final requestModel = await _testService(client).sendCommunityContactRequest(
+      token: 'test-session-token',
+      receiverId: 27,
+    );
+
+    final request = client.requests.single as http.Request;
+    expect(request.method, 'POST');
+    expect(request.url.path, '/api/community/contact-requests');
+    expect(jsonDecode(request.body), {'receiver_id': 27});
+    expect(_authorizationHeader(request), 'Bearer test-session-token');
+    expect(requestModel.id, 91);
+    expect(requestModel.requester.displayName, 'Arun Kumar');
+    expect(requestModel.receiver.profession, 'Designer');
+  });
+
   test('project lifecycle requests use authenticated API endpoints', () async {
     final client = _RecordingClient(
       responseBody: {
@@ -79,6 +393,52 @@ void main() {
       _authorizationHeader(client.requests.single),
       'Bearer test-session-token',
     );
+  });
+
+  test('account access and upgrade use authenticated account endpoints',
+      () async {
+    final accessClient = _RecordingClient(
+      responseBody: {
+        'has_main_app_access': true,
+        'roles': ['contractor'],
+      },
+    );
+    final access = await _testService(accessClient)
+        .getAccountAccess(token: 'test-session-token');
+    expect(access['has_main_app_access'], isTrue);
+    expect(
+      (accessClient.requests.single as http.Request).url.path,
+      '/api/account/access',
+    );
+    expect(
+      _authorizationHeader(accessClient.requests.single),
+      startsWith('Bearer '),
+    );
+
+    final upgradeClient = _RecordingClient(
+      responseBody: {
+        'user': {
+          'id': 42,
+          'name': 'Community Member',
+          'role': 'designer',
+        },
+      },
+    );
+    final user = await _testService(upgradeClient).upgradeAccount(
+      token: 'test-session-token',
+      role: 'designer',
+      name: 'Community Member',
+      location: 'Kochi, Kerala',
+    );
+    expect(user['id'], 42);
+    final request = upgradeClient.requests.single as http.Request;
+    expect(request.url.path, '/api/account/upgrade');
+    expect(_authorizationHeader(request), startsWith('Bearer '));
+    expect(jsonDecode(request.body), {
+      'role': 'designer',
+      'name': 'Community Member',
+      'location': 'Kochi, Kerala',
+    });
   });
 
   test('project transaction requests send the saved session as a bearer token',

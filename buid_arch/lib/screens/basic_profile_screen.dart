@@ -11,24 +11,25 @@ import '../theme/app_text_styles.dart';
 import '../theme/app_theme.dart';
 import '../widgets/auth_button.dart';
 import '../widgets/profile_text_field.dart';
-import '../widgets/setup_pill.dart';
 import 'app_lock_setup_screen.dart';
 import 'project_location_picker_screen.dart';
+import 'upgrade_confirmation_screen.dart';
 
-/// "Tell Us About Your Project" - name, location and project details,
-/// shown after Role selection (Home Owner).
+/// Profile details collected after role selection.
 class BasicProfileScreen extends StatefulWidget {
   const BasicProfileScreen({
     super.key,
     this.phoneNumber,
     this.authFlow = AuthFlow.mobileLogin,
     required this.role,
+    this.isUpgrade = false,
   });
 
   /// Already-verified number from mobile login, if available.
   final String? phoneNumber;
   final AuthFlow authFlow;
   final AppRole role;
+  final bool isUpgrade;
 
   @override
   State<BasicProfileScreen> createState() => _BasicProfileScreenState();
@@ -38,7 +39,7 @@ class _BasicProfileScreenState extends State<BasicProfileScreen> {
   final _nameController = TextEditingController();
   final _locationController = TextEditingController();
   late final TextEditingController _phoneController =
-      TextEditingController(text: widget.phoneNumber ?? '');
+      TextEditingController(text: _phoneInputValue(widget.phoneNumber));
   final _phoneOtpController = TextEditingController();
 
   bool _saving = false;
@@ -48,16 +49,51 @@ class _BasicProfileScreenState extends State<BasicProfileScreen> {
   bool _verifyingPhone = false;
   bool _choosingLocation = false;
   String? _otpSentTo;
+  String? _verifiedPhoneNumber;
 
   @override
   void initState() {
     super.initState();
-    _phoneVerified = widget.phoneNumber != null;
+    _verifiedPhoneNumber = _normalizePhone(widget.phoneNumber);
+    _phoneVerified = _verifiedPhoneNumber != null;
     for (final c in [_nameController, _locationController]) {
       c.addListener(() => setState(() {}));
     }
     _phoneController.addListener(_onPhoneChanged);
     _phoneOtpController.addListener(() => setState(() {}));
+    if (widget.isUpgrade) _prefillUpgradeProfile();
+  }
+
+  Future<void> _prefillUpgradeProfile() async {
+    final user = await AuthSessionService.instance.readUser();
+    if (!mounted || user == null) return;
+    _nameController.text = user['name'] is String ? user['name'] as String : '';
+    _locationController.text =
+        user['location'] is String ? user['location'] as String : '';
+    final phone = user['phone_number'];
+    if (phone is String) {
+      final normalized = _normalizePhone(phone);
+      if (normalized != null) {
+        _verifiedPhoneNumber = normalized;
+        _phoneVerified = true;
+        _phoneController.text = normalized.substring(3);
+      }
+    }
+  }
+
+  String? _normalizePhone(String? value) {
+    if (value == null) return null;
+    final digits = value.replaceAll(RegExp(r'\D'), '');
+    if (digits.length == 10) return '+91$digits';
+    if (digits.length == 12 && digits.startsWith('91')) {
+      return '+$digits';
+    }
+    return null;
+  }
+
+  String _phoneInputValue(String? value) {
+    final normalized = _normalizePhone(value);
+    return normalized == null ? '' : normalized.substring(3);
   }
 
   @override
@@ -82,7 +118,7 @@ class _BasicProfileScreenState extends State<BasicProfileScreen> {
 
   void _onPhoneChanged() {
     final phoneNumber = _phoneNumberForVerification;
-    if (_phoneVerified && phoneNumber == widget.phoneNumber) return;
+    if (_phoneVerified && phoneNumber == _verifiedPhoneNumber) return;
     if (phoneNumber != _otpSentTo) _phoneOtpController.clear();
     setState(() {
       _phoneVerified = false;
@@ -147,6 +183,7 @@ class _BasicProfileScreenState extends State<BasicProfileScreen> {
       if (!mounted) return;
       setState(() {
         _phoneVerified = true;
+        _verifiedPhoneNumber = phoneNumber;
         _phoneOtpSent = false;
       });
       _showMessage('Mobile number verified');
@@ -195,20 +232,27 @@ class _BasicProfileScreenState extends State<BasicProfileScreen> {
             'Your session expired. Please sign in again.');
       }
 
-      final user = await AuthApiService.instance.updateProfile(
-        token: token,
-        name: _nameController.text.trim(),
-        location: _locationController.text.trim(),
-        role: widget.role.name,
-      );
+      final user = widget.isUpgrade
+          ? await AuthApiService.instance.upgradeAccount(
+              token: token,
+              name: _nameController.text.trim(),
+              location: _locationController.text.trim(),
+              role: widget.role.name,
+            )
+          : await AuthApiService.instance.updateProfile(
+              token: token,
+              name: _nameController.text.trim(),
+              location: _locationController.text.trim(),
+              role: widget.role.name,
+            );
       await AuthSessionService.instance.saveSession(token: token, user: user);
 
       if (!mounted) return;
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => AppLockSetupScreen(
-            authFlow: widget.authFlow,
-          ),
+          builder: (_) => widget.isUpgrade
+              ? const UpgradeConfirmationScreen()
+              : AppLockSetupScreen(authFlow: widget.authFlow),
         ),
       );
     } on AuthApiException catch (error) {
@@ -265,26 +309,17 @@ class _BasicProfileScreenState extends State<BasicProfileScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              IconButton(
-                onPressed: () => Navigator.of(context).maybePop(),
-                icon: const Icon(Icons.arrow_back, color: AppColors.creamSand),
-              ),
-              Text('R-102.4 // PROFILE', style: _cornerStyle()),
-            ],
+          Align(
+            alignment: Alignment.centerLeft,
+            child: IconButton(
+              onPressed: () => Navigator.of(context).maybePop(),
+              icon: const Icon(Icons.arrow_back, color: AppColors.creamSand),
+            ),
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Text('SEC // AUTH-04', style: _cornerStyle()),
-          ),
-          const SizedBox(height: 12),
-          const Center(child: SetupPill(label: 'SETUP // 03')),
           const SizedBox(height: 12),
           Center(
             child: Text(
-              'Tell Us About Your Project',
+              'Complete Your Profile',
               textAlign: TextAlign.center,
               style: AppTextStyles.cardTitle.copyWith(
                 fontSize: 28,
@@ -311,11 +346,6 @@ class _BasicProfileScreenState extends State<BasicProfileScreen> {
       ),
     );
   }
-
-  TextStyle _cornerStyle() => AppTextStyles.labelTechnical.copyWith(
-        color: AppColors.creamSand.withAlpha(140),
-        letterSpacing: 1.0,
-      );
 
   Widget _buildCard(double bottomInset) {
     return Container(
@@ -351,7 +381,7 @@ class _BasicProfileScreenState extends State<BasicProfileScreen> {
             label: 'Mobile Number (+91)',
             icon: Icons.phone_iphone,
             controller: _phoneController,
-            readOnly: widget.phoneNumber != null && _phoneVerified,
+            readOnly: _phoneVerified && _verifiedPhoneNumber != null,
             keyboardType: TextInputType.phone,
             hintText: '10-digit mobile number',
             trailing: _phoneVerified
@@ -502,14 +532,6 @@ class _BasicProfileScreenState extends State<BasicProfileScreen> {
                     : const Icon(Icons.arrow_forward,
                         size: 18, color: Colors.white),
               ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          Center(
-            child: Text(
-              'BUILD ARCH V2.4 // TELEMETRY GATEWAY - ISO-19650 COMPLIANT',
-              textAlign: TextAlign.center,
-              style: AppTextStyles.labelTechnical.copyWith(letterSpacing: 0.6),
             ),
           ),
         ],

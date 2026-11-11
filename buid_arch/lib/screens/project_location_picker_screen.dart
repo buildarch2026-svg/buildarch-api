@@ -277,7 +277,7 @@ class _ProjectLocationPickerScreenState
       if (!mounted || (initial && _hasHandledSharedLocation)) return;
       _selectPoint(
         LatLng(location.latitude, location.longitude),
-        location: _locationHasAddress(location) ? location : null,
+        location: location,
         zoom: 16,
       );
     } on CurrentLocationException catch (error) {
@@ -308,9 +308,6 @@ class _ProjectLocationPickerScreenState
       if (mounted) setState(() => _resolvingAddress = false);
     }
   }
-
-  bool _locationHasAddress(CurrentDeviceLocation location) =>
-      !location.address.startsWith('Coordinates:');
 
   Future<CurrentDeviceLocation> _locationOrCoordinates(LatLng point) async {
     try {

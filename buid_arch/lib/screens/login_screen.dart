@@ -14,7 +14,9 @@ import '../widgets/blueprint_background.dart';
 import '../widgets/build_arch_emblem.dart';
 import '../widgets/google_logo.dart';
 import '../widgets/phase_badge.dart';
+import 'account_type_selection_screen.dart';
 import 'home_screen.dart';
+import 'community_screen.dart';
 import 'mobile_number_screen.dart';
 import 'role_selection_screen.dart';
 
@@ -58,9 +60,16 @@ class _LoginScreenState extends State<LoginScreen> {
 
       final destination = profileComplete
           ? const HomeScreen()
-          : const RoleSelectionScreen(
-              authFlow: AuthFlow.googleLogin,
-            );
+          : user['role'] != null && user['role'] != ''
+              ? const RoleSelectionScreen(
+                  authFlow: AuthFlow.googleLogin,
+                )
+              : user['community_registered'] == true &&
+                      (user['role'] == null || user['role'] == '')
+                  ? const CommunityScreen()
+                  : const AccountTypeSelectionScreen(
+                      authFlow: AuthFlow.googleLogin,
+                    );
 
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(
@@ -147,6 +156,13 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                             ),
                           ),
+                          onCreateAccount: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const MobileNumberScreen(
+                                authFlow: AuthFlow.signUp,
+                              ),
+                            ),
+                          ),
                           googleSigningIn: _googleSigningIn,
                         ),
                       ],
@@ -205,6 +221,7 @@ class _AuthCard extends StatelessWidget {
     required this.bottomInset,
     required this.onGoogle,
     required this.onSignIn,
+    required this.onCreateAccount,
     this.googleSigningIn = false,
     this.pendingInvitation = false,
   });
@@ -212,6 +229,7 @@ class _AuthCard extends StatelessWidget {
   final double bottomInset;
   final VoidCallback onGoogle;
   final VoidCallback onSignIn;
+  final VoidCallback onCreateAccount;
   final bool googleSigningIn;
   final bool pendingInvitation;
 
@@ -321,6 +339,11 @@ class _AuthCard extends StatelessWidget {
               size: 18,
               color: AppColors.surface,
             ),
+          ),
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: onCreateAccount,
+            child: const Text('Create an account'),
           ),
           const SizedBox(height: 24),
 

@@ -14,12 +14,10 @@ class DashboardHero extends StatefulWidget {
     super.key,
     required this.project,
     this.statusLabel = 'Active',
-    this.updatedLabel = 'Updated 2h ago',
   });
 
   final Project project;
   final String statusLabel;
-  final String updatedLabel;
 
   @override
   State<DashboardHero> createState() => _DashboardHeroState();
@@ -178,18 +176,6 @@ class _DashboardHeroState extends State<DashboardHero> {
                           color: Colors.white,
                           fontWeight: FontWeight.w600,
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        '•',
-                        style: AppTextStyles.bodySm
-                            .copyWith(color: Colors.white54),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        widget.updatedLabel,
-                        style: AppTextStyles.bodySm
-                            .copyWith(color: Colors.white70),
                       ),
                     ],
                   ),
