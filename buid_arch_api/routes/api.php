@@ -23,6 +23,10 @@ use Illuminate\Support\Facades\Route;
 
 Broadcast::routes(['middleware' => ['auth:sanctum']]);
 
+Route::get('/public/ping', function () {
+    return response('Hi', 200, ['Content-Type' => 'text/plain']);
+})->middleware('throttle:60,1');
+
 Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
@@ -312,7 +316,7 @@ Route::post('/user/profile/phone/verify', [OtpController::class, 'verifyProfileP
     ->middleware(['auth:sanctum', 'throttle:10,1']);
 
 Route::post('/user/profile/phone/request', [OtpController::class, 'sendProfilePhoneOtp'])
-    ->middleware(['auth:sanctum', 'throttle:3,10']);
+    ->middleware('throttle:3,10');
 
 Route::post('/auth/otp/request', [OtpController::class, 'send'])
     ->middleware('throttle:3,10');

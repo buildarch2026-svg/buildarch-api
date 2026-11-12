@@ -50,31 +50,34 @@ class OtpApiTest extends TestCase
         ]);
     }
 
-    public function test_authenticated_profile_phone_request_has_a_separate_throttle_bucket(): void
+    public function test_profile_phone_request_is_rate_limited(): void
     {
         for ($attempt = 0; $attempt < 3; $attempt++) {
-            $this->postJson('/api/auth/otp/request', [
-                'phone_number' => '+919876543210',
+            $this->postJson('/api/user/profile/phone/request', [
+                'phone_number' => '+91987654321'.($attempt + 1),
             ])->assertOk();
         }
-        $this->postJson('/api/auth/otp/request', [
-            'phone_number' => '+919876543210',
+        $this->postJson('/api/user/profile/phone/request', [
+            'phone_number' => '+919876543214',
         ])->assertTooManyRequests();
+    }
 
-        $user = User::factory()->create(['phone_number' => null]);
-        $token = $user->createToken('test')->plainTextToken;
-
-        $this->withToken($token)
-            ->postJson('/api/user/profile/phone/request', [
-                'phone_number' => '+919876543211',
-            ])
-            ->assertOk()
+    public function test_profile_phone_otp_request_is_public_but_verification_requires_authentication(): void
+    {
+        $this->postJson('/api/user/profile/phone/request', [
+            'phone_number' => '+919876543212',
+        ])->assertOk()
             ->assertJsonPath('expires_in', 300);
 
         $this->assertDatabaseHas('otp_challenges', [
-            'phone_number' => '+919876543211',
+            'phone_number' => '+919876543212',
             'attempts' => 0,
         ]);
+
+        $this->postJson('/api/user/profile/phone/verify', [
+            'phone_number' => '+919876543212',
+            'code' => '123456',
+        ])->assertUnauthorized();
     }
 
     public function test_request_sends_the_otp_using_the_configured_whatsapp_template(): void

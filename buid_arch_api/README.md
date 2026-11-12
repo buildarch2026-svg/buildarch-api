@@ -33,6 +33,10 @@ responses bypass Laravel middleware.
 
 ## Build Arch account capabilities
 
+`GET /api/public/ping` is a public connectivity endpoint and does not require
+authentication. It returns the plain text `Hi` and is limited to 60 requests
+per minute.
+
 The authenticated `GET /api/me` and `GET /api/account/access` endpoints report
 the current account and its Main App capability. `POST /api/account/upgrade`
 accepts a validated `role` (`homeOwner`, `contractor`, or `designer`) plus the

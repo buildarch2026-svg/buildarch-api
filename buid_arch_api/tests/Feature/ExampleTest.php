@@ -16,4 +16,12 @@ class ExampleTest extends TestCase
 
         $response->assertStatus(200);
     }
+
+    public function test_public_ping_endpoint_is_available_without_authentication(): void
+    {
+        $this->getJson('/api/public/ping')
+            ->assertOk()
+            ->assertSeeText('Hi')
+            ->assertHeader('Content-Type', 'text/plain; charset=UTF-8');
+    }
 }

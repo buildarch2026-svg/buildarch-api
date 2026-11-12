@@ -42,7 +42,7 @@ class OtpController extends Controller
                 'required',
                 'string',
                 'regex:/^\+[1-9]\d{7,14}$/',
-                Rule::unique('users', 'phone_number')->ignore($request->user()->id),
+                Rule::unique('users', 'phone_number'),
             ],
         ]);
 
