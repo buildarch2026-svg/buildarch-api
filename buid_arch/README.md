@@ -36,6 +36,30 @@ staging server, set its reachable API URL with
 `--dart-define=API_BASE_URL=https://<host>/api`. Release builds reject
 non-HTTPS and loopback API URLs.
 
+### Test the AWS API (Android debug only)
+
+The current AWS endpoint uses HTTP. To point an Android debug run at it, pass
+the URL through the centralized setting:
+
+    flutter run -d <device-id> `
+      --dart-define=API_BASE_URL=http://3.25.85.44/api `
+      --dart-define=GOOGLE_WEB_CLIENT_ID=<web-client-id>
+
+Replace the device ID and OAuth client ID with your values. This command uses
+the AWS API for all app services that go through `AuthApiService`; it does not
+start the local API/Reverb services used by `run_on_phone.ps1`. The local
+launcher remains the development default and continues to target
+`http://127.0.0.1:8000/api`.
+
+This HTTP setup is for Android debug testing only. Android's debug manifest
+permits cleartext traffic; the release manifest does not. iOS App Transport
+Security blocks HTTP by default, and Flutter Web hosted over HTTPS cannot call
+an HTTP API due to mixed-content restrictions. Do not add platform exceptions
+or use this URL in a release build. Configure a valid HTTPS hostname and
+certificate first, then build with
+`--dart-define=API_BASE_URL=https://<host>/api`; the release API configuration
+enforces HTTPS.
+
 ## Community and Main App accounts
 
 Sign-in uses one Build Arch account. New users can choose Project Management
