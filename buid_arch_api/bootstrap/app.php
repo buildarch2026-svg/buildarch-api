@@ -4,7 +4,7 @@ use App\Http\Middleware\EnsureProjectIsActive;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
-
+use Illuminate\Http\Request;
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
         web: __DIR__.'/../routes/web.php',
@@ -13,12 +13,20 @@ return Application::configure(basePath: dirname(__DIR__))
         channels: __DIR__.'/../routes/channels.php',
         health: '/up',
     )
-    ->withMiddleware(function (Middleware $middleware) {
-        $middleware->alias([
-            'project.active' => EnsureProjectIsActive::class,
-            'main-app' => \App\Http\Middleware\EnsureMainAppAccess::class,
-        ]);
-    })
-    ->withExceptions(function (Exceptions $exceptions) {
+->withMiddleware(function (Middleware $middleware): void {
+
+    $middleware->alias([
+        'project.active' => EnsureProjectIsActive::class,
+        'main-app' => \App\Http\Middleware\EnsureMainAppAccess::class,
+    ]);
+
+    $middleware->redirectGuestsTo(
+        fn (Request $request) => $request->is('api/*')
+            ? null
+            : route('login')
+    );
+
+})
+     ->withExceptions(function (Exceptions $exceptions) {
         //
     })->create();
