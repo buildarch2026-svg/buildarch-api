@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Auth;
 use App\Http\Controllers\Controller;
 use App\Models\OtpChallenge;
 use App\Models\User;
+use App\Services\GoogleIdentityVerificationConfigurationException;
 use App\Services\GoogleIdentityVerificationUnavailable;
 use App\Services\GoogleIdTokenVerifier;
 use App\Services\WhatsAppOtpSender;
@@ -229,6 +230,12 @@ class OtpController extends Controller
 
         try {
             $googleUser = $googleIdTokenVerifier->verify($validated['id_token']);
+        } catch (GoogleIdentityVerificationConfigurationException $exception) {
+            report($exception);
+
+            return response()->json([
+                'message' => 'Google sign-in is not configured. Please contact support.',
+            ], 500);
         } catch (GoogleIdentityVerificationUnavailable $exception) {
             report($exception);
 

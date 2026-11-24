@@ -19,10 +19,11 @@ class GoogleIdTokenVerifier
     {
         $clientId = config('services.google.client_id');
         if (! is_string($clientId) || trim($clientId) === '') {
-            throw new GoogleIdentityVerificationUnavailable(
+            throw new GoogleIdentityVerificationConfigurationException(
                 'The Google web client ID is not configured.'
             );
         }
+        $clientId = trim($clientId);
 
         try {
             $claims = $this->accessToken()->verify($idToken, [

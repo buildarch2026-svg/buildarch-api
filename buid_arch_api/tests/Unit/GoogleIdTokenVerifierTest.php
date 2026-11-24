@@ -2,7 +2,7 @@
 
 namespace Tests\Unit;
 
-use App\Services\GoogleIdentityVerificationUnavailable;
+use App\Services\GoogleIdentityVerificationConfigurationException;
 use App\Services\GoogleIdTokenVerifier;
 use Google\Auth\AccessToken;
 use GuzzleHttp\Psr7\Response;
@@ -68,7 +68,7 @@ class GoogleIdTokenVerifierTest extends TestCase
         config(['services.google.client_id' => '']);
         [$verifier] = $this->makeVerifier();
 
-        $this->expectException(GoogleIdentityVerificationUnavailable::class);
+        $this->expectException(GoogleIdentityVerificationConfigurationException::class);
         $verifier->verify('not-a-token');
     }
 

@@ -467,6 +467,21 @@ class OtpApiTest extends TestCase
         $this->assertDatabaseCount('users', 0);
     }
 
+    public function test_google_login_reports_missing_server_client_id_as_configuration_error(): void
+    {
+        config(['services.google.client_id' => '']);
+
+        $this->postJson('/api/auth/google', [
+            'id_token' => 'verified-test-token',
+        ])->assertInternalServerError()
+            ->assertJsonPath(
+                'message',
+                'Google sign-in is not configured. Please contact support.',
+            );
+
+        $this->assertDatabaseCount('users', 0);
+    }
+
     public function test_authenticated_user_can_save_basic_profile(): void
     {
         $user = User::factory()->create();
