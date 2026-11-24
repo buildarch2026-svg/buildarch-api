@@ -10,7 +10,7 @@ import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 
 const _projectFileSaverChannel =
-    MethodChannel('com.example.buid_arch/project_file_saver');
+    MethodChannel('com.buildarchsolutions.buildarch/project_file_saver');
 
 class ProjectDocumentsScreen extends StatefulWidget {
   const ProjectDocumentsScreen({

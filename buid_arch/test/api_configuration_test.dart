@@ -28,7 +28,15 @@ void main() {
     for (final url in [
       'http://api.example.test/api',
       'https://localhost/api',
+      'https://service.localhost/api',
       'https://127.0.0.1/api',
+      'https://10.0.2.2/api',
+      'https://172.16.0.2/api',
+      'https://192.168.1.2/api',
+      'https://[::1]/api',
+      'https://[fd00::1]/api',
+      'https://[fe80::1]/api',
+      'https://[::ffff:10.0.0.1]/api',
     ]) {
       expect(
         () =>
@@ -44,6 +52,60 @@ void main() {
       ).resolve('user').toString(),
       'https://api.example.test/api/user',
     );
+    expect(
+      ApiConfiguration(
+        baseUrl: 'https://[2606:4700:4700::1111]/api',
+        requireHttps: true,
+      ).resolve('user').toString(),
+      'https://[2606:4700:4700::1111]/api/user',
+    );
+  });
+
+  test('production configuration uses the AWS API and secure Reverb host', () {
+    final configuration = ApiConfiguration(
+      baseUrl: 'https://api.buildarchsolutions.com/api/',
+      requireHttps: true,
+    );
+
+    expect(
+      configuration.resolve('user').toString(),
+      'https://api.buildarchsolutions.com/api/user',
+    );
+
+    final socket = configuration.resolveChatSocket(
+      appKey: 'production-key',
+      host: 'ws.buildarchsolutions.com',
+      port: 443,
+      scheme: 'https',
+    );
+    expect(socket.scheme, 'wss');
+    expect(socket.host, 'ws.buildarchsolutions.com');
+    expect(socket.port, 443);
+    expect(socket.path, '/app/production-key');
+  });
+
+  test('release configuration rejects insecure or local Reverb endpoints', () {
+    final configuration = ApiConfiguration(
+      baseUrl: 'https://api.buildarchsolutions.com/api',
+      requireHttps: true,
+    );
+    for (final values in [
+      (host: 'ws.buildarchsolutions.com', port: 443, scheme: 'http'),
+      (host: '127.0.0.1', port: 443, scheme: 'https'),
+      (host: '192.168.1.2', port: 443, scheme: 'https'),
+      (host: 'fd00::1', port: 443, scheme: 'https'),
+      (host: 'ws.buildarchsolutions.com', port: 8080, scheme: 'https'),
+    ]) {
+      expect(
+        () => configuration.resolveChatSocket(
+          appKey: 'production-key',
+          host: values.host,
+          port: values.port,
+          scheme: values.scheme,
+        ),
+        throwsA(isA<ApiConfigurationException>()),
+      );
+    }
   });
 
   test('builds the Reverb WebSocket URI for local Android forwarding', () {

@@ -34,31 +34,57 @@ so the local server can stay bound to the computer's loopback interface and
 neither target needs a hardcoded computer IP. For another development or
 staging server, set its reachable API URL with
 `--dart-define=API_BASE_URL=https://<host>/api`. Release builds reject
-non-HTTPS and loopback API URLs.
+non-HTTPS and local/private API hosts. Release chat connections require WSS
+to a public host on port 443.
 
-### Test the AWS API (Android debug only)
+## Build for AWS production (Android)
 
-The current AWS endpoint uses HTTP. To point an Android debug run at it, pass
-the URL through the centralized setting:
+Production builds use the HTTPS API and secure Reverb endpoint:
 
-    flutter run -d <device-id> `
-      --dart-define=API_BASE_URL=http://3.25.85.44/api `
-      --dart-define=GOOGLE_WEB_CLIENT_ID=<web-client-id>
+- API: `https://api.buildarchsolutions.com/api/`
+- Reverb: `wss://ws.buildarchsolutions.com:443`
 
-Replace the device ID and OAuth client ID with your values. This command uses
-the AWS API for all app services that go through `AuthApiService`; it does not
-start the local API/Reverb services used by `run_on_phone.ps1`. The local
-launcher remains the development default and continues to target
-`http://127.0.0.1:8000/api`.
+The production builder does not start local Laravel/Reverb, read the local
+Laravel `.env`, or use ADB reverse. Before building, set these process
+environment variables from the approved production client configuration:
 
-This HTTP setup is for Android debug testing only. Android's debug manifest
-permits cleartext traffic; the release manifest does not. iOS App Transport
-Security blocks HTTP by default, and Flutter Web hosted over HTTPS cannot call
-an HTTP API due to mixed-content restrictions. Do not add platform exceptions
-or use this URL in a release build. Configure a valid HTTPS hostname and
-certificate first, then build with
-`--dart-define=API_BASE_URL=https://<host>/api`; the release API configuration
-enforces HTTPS.
+- `BUILDARCH_PROD_FIREBASE_PROJECT_ID`
+- `BUILDARCH_PROD_GOOGLE_WEB_CLIENT_ID`
+- `BUILDARCH_PROD_REVERB_APP_KEY`
+
+The Android ID is fixed in Gradle as
+`com.buildarchsolutions.buildarch`; it is not selected by a production
+environment variable. The builder checks that the Firebase project ID matches
+the Android `google-services.json` and that the file contains a client for the
+fixed application ID. It reads the Android Firebase client options from that
+file. It does not read or package Firebase Admin credentials or the Reverb app
+secret.
+
+The Android application ID and namespace are
+`com.buildarchsolutions.buildarch` for both debug and release builds. Register
+this ID with the production Firebase project and Google OAuth; update
+`google-services.json` separately before building. The production release
+signing configuration is separate from the local debug key. Create
+`android/release-key.properties` and its keystore outside source control;
+the properties file and keystore are ignored by Git. Configure these property
+names in that file: `storeFile`, `storePassword`, `keyAlias`, and
+`keyPassword`. Do not reuse or publish a debug keystore as the production
+signing key.
+
+After setting the required environment variables and signing properties, run
+from this directory:
+
+    .\build_production.ps1
+
+The output is `build\app\outputs\bundle\release\app-release.aab`. Release
+configuration rejects insecure or local API/WebSocket endpoints and requires
+WSS on port 443. Do not place Firebase service-account credentials or
+`REVERB_APP_SECRET` in Flutter build settings.
+
+The production script currently builds Android only. iOS has the bundle ID
+`com.buidarch.buidArch`, but no `GoogleService-Info.plist` is present; provide
+and verify the iOS Firebase app options and signing configuration before
+building or publishing an iOS release.
 
 ## Community and Main App accounts
 
@@ -77,11 +103,10 @@ complete a Community profile without another sign-in.
 ## Google sign-in
 Configure the same Google Web OAuth client ID in the Laravel API's
 `GOOGLE_WEB_CLIENT_ID` setting and the Flutter build's
-`GOOGLE_WEB_CLIENT_ID` Dart define. For example:
-
-    flutter run `
-      --dart-define=API_BASE_URL=https://<host>/api `
-      --dart-define=GOOGLE_WEB_CLIENT_ID=<web-client-id>
+`GOOGLE_WEB_CLIENT_ID` Dart define. For the Android production build, provide
+the approved ID as `BUILDARCH_PROD_GOOGLE_WEB_CLIENT_ID` before running
+`.\build_production.ps1`. The Android package name and production signing
+fingerprints must also be registered with Google OAuth.
 
 The API verifies the Google ID token signature, audience, issuer, and expiry
 before creating or linking an account. It uses only identity claims from that
@@ -168,8 +193,8 @@ they are not already present. Apply the chat migration from `buid_arch_api`
 with `php artisan migrate --force`. The mobile app uses the Reverb application
 key only; do not put the Reverb secret in Flutter or commit it to source.
 
-To enable push, register the Android app (`com.example.buid_arch`) and iOS app
-(`com.buidarch.buidArch`) in the Firebase project. Put the client values
+To enable push, register the Android app (`com.buildarchsolutions.buildarch`)
+and iOS app (`com.buidarch.buidArch`) in the Firebase project. Put the client values
 (`FIREBASE_PROJECT_ID`, `FIREBASE_API_KEY`, `FIREBASE_MESSAGING_SENDER_ID`,
 `FIREBASE_ANDROID_APP_ID`, and `FIREBASE_IOS_APP_ID`) in the API `.env`;
 `run_on_phone.ps1` passes only these public values to Flutter. For the API,

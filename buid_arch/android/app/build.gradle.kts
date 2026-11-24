@@ -7,33 +7,102 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
-val keystoreProperties = Properties()
-val keystorePropertiesFile = rootProject.file("key.properties")
-
-check(keystorePropertiesFile.isFile) {
-    "Missing android/key.properties. Please create it before building."
+val debugSigningProperties = Properties()
+val debugSigningPropertiesFile = rootProject.file("key.properties")
+if (debugSigningPropertiesFile.isFile) {
+    debugSigningPropertiesFile.inputStream().use {
+        debugSigningProperties.load(it)
+    }
 }
 
-keystorePropertiesFile.inputStream().use {
-    keystoreProperties.load(it)
+val releaseSigningProperties = Properties()
+val releaseSigningPropertiesFile = rootProject.file("release-key.properties")
+if (releaseSigningPropertiesFile.isFile) {
+    releaseSigningPropertiesFile.inputStream().use {
+        releaseSigningProperties.load(it)
+    }
 }
 
-fun requiredSigningProperty(name: String): String =
-    keystoreProperties.getProperty(name)
+fun requiredSigningProperty(
+    properties: Properties,
+    name: String,
+    propertiesFile: String,
+): String =
+    properties.getProperty(name)
         ?.takeIf(String::isNotBlank)
-        ?: error("Missing '$name' in android/key.properties.")
+        ?: error("Missing '$name' in android/$propertiesFile.")
+
+val isReleaseBuild = gradle.startParameter.taskNames.any {
+    it.contains("release", ignoreCase = true)
+}
+if (isReleaseBuild && !releaseSigningPropertiesFile.isFile) {
+    error(
+        "Missing android/release-key.properties. Configure a production "
+            + "signing key before building a release artifact.",
+    )
+}
 
 android {
-    namespace = "com.example.buid_arch"
+    namespace = "com.buildarchsolutions.buildarch"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
     signingConfigs {
-        create("buildArchDebug") {
-            storeFile = rootProject.file(requiredSigningProperty("storeFile"))
-            storePassword = requiredSigningProperty("storePassword")
-            keyAlias = requiredSigningProperty("keyAlias")
-            keyPassword = requiredSigningProperty("keyPassword")
+        if (debugSigningPropertiesFile.isFile) {
+            create("buildArchDebug") {
+                storeFile = rootProject.file(
+                    requiredSigningProperty(
+                        debugSigningProperties,
+                        "storeFile",
+                        "key.properties",
+                    ),
+                )
+                storePassword = requiredSigningProperty(
+                    debugSigningProperties,
+                    "storePassword",
+                    "key.properties",
+                )
+                keyAlias = requiredSigningProperty(
+                    debugSigningProperties,
+                    "keyAlias",
+                    "key.properties",
+                )
+                keyPassword = requiredSigningProperty(
+                    debugSigningProperties,
+                    "keyPassword",
+                    "key.properties",
+                )
+            }
+        }
+        if (releaseSigningPropertiesFile.isFile) {
+            create("productionRelease") {
+                val releaseStoreFile = rootProject.file(
+                    requiredSigningProperty(
+                        releaseSigningProperties,
+                        "storeFile",
+                        "release-key.properties",
+                    ),
+                )
+                check(releaseStoreFile.isFile) {
+                    "Production Android keystore file was not found."
+                }
+                storeFile = releaseStoreFile
+                storePassword = requiredSigningProperty(
+                    releaseSigningProperties,
+                    "storePassword",
+                    "release-key.properties",
+                )
+                keyAlias = requiredSigningProperty(
+                    releaseSigningProperties,
+                    "keyAlias",
+                    "release-key.properties",
+                )
+                keyPassword = requiredSigningProperty(
+                    releaseSigningProperties,
+                    "keyPassword",
+                    "release-key.properties",
+                )
+            }
         }
     }
 
@@ -43,7 +112,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.buid_arch"
+        applicationId = "com.buildarchsolutions.buildarch"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
@@ -52,11 +121,15 @@ android {
 
     buildTypes {
         getByName("debug") {
-            signingConfig = signingConfigs.getByName("buildArchDebug")
+            if (debugSigningPropertiesFile.isFile) {
+                signingConfig = signingConfigs.getByName("buildArchDebug")
+            }
         }
 
         getByName("release") {
-            // Configure a separate production signing key before publishing.
+            if (releaseSigningPropertiesFile.isFile) {
+                signingConfig = signingConfigs.getByName("productionRelease")
+            }
         }
     }
 }

@@ -31,7 +31,7 @@ class SharedLocationService {
 
   static final instance = SharedLocationService._();
   static const _channel =
-      MethodChannel('com.example.buid_arch/shared_location');
+      MethodChannel('com.buildarchsolutions.buildarch/shared_location');
   final _sharedTextController = StreamController<String>.broadcast();
 
   Stream<String> get sharedTexts => _sharedTextController.stream;

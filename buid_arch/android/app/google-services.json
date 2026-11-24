@@ -7,6 +7,43 @@
   "client": [
     {
       "client_info": {
+        "mobilesdk_app_id": "1:515190585110:android:7d00d8e13a84da96074237",
+        "android_client_info": {
+          "package_name": "com.buildarchsolutions.buildarch"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "515190585110-knrmnieqsrn1gbcoke3v8k2hj1fbevl1.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.buildarchsolutions.buildarch",
+            "certificate_hash": "512bed6d892dbd1ec55e75dddaafe46747eea3f5"
+          }
+        },
+        {
+          "client_id": "515190585110-7k5eb0j7mu0hai1cc46pnuc11t040mhc.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyABPYvdYEd2S3E-Jj3vr3Kmm5VHmSQ0AqA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "515190585110-7k5eb0j7mu0hai1cc46pnuc11t040mhc.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
         "mobilesdk_app_id": "1:515190585110:android:20daae980d2e89b0074237",
         "android_client_info": {
           "package_name": "com.example.buid_arch"
@@ -19,6 +56,14 @@
           "android_info": {
             "package_name": "com.example.buid_arch",
             "certificate_hash": "d1e2044edd9af0eec7a0eba4d8e348b6a222f76a"
+          }
+        },
+        {
+          "client_id": "515190585110-cht0phj64l9lr03b0e4b8q813t74a7j6.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.buid_arch",
+            "certificate_hash": "512bed6d892dbd1ec55e75dddaafe46747eea3f5"
           }
         },
         {

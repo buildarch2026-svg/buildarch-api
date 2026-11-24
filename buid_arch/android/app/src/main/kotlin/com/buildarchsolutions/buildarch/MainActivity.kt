@@ -1,4 +1,4 @@
-package com.example.buid_arch
+package com.buildarchsolutions.buildarch
 
 import android.content.Intent
 import android.os.Handler
@@ -138,8 +138,8 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     companion object {
-        private const val FILE_SAVER_CHANNEL = "com.example.buid_arch/project_file_saver"
-        private const val SHARED_LOCATION_CHANNEL = "com.example.buid_arch/shared_location"
+        private const val FILE_SAVER_CHANNEL = "com.buildarchsolutions.buildarch/project_file_saver"
+        private const val SHARED_LOCATION_CHANNEL = "com.buildarchsolutions.buildarch/shared_location"
         private const val SAVE_FILE_REQUEST_CODE = 9317
     }
 }
