@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 import 'auth_api_service.dart';
@@ -44,15 +45,57 @@ class GoogleAuthService {
 
       return response;
     } on GoogleSignInException catch (error) {
+      if (kDebugMode) {
+        final message = _safeDiagnosticMessage(error.description);
+        debugPrint(
+          'Google Sign-In exception type=${error.runtimeType}; '
+          'code=${error.code.name}; message=$message',
+        );
+      }
+
+      final isAccountReauthenticationFailure = error.description
+              ?.toLowerCase()
+              .contains('account reauth failed') ??
+          false;
       final message = switch (error.code) {
         GoogleSignInExceptionCode.clientConfigurationError =>
           'Google sign-in is not configured correctly. Please contact support.',
         GoogleSignInExceptionCode.providerConfigurationError =>
           'This app is not registered correctly with Google. Please contact support.',
+        GoogleSignInExceptionCode.canceled when
+          isAccountReauthenticationFailure =>
+          'Google could not reauthenticate this account. Reauthenticate the '
+              'Google account on your phone or choose another account, then retry.',
         GoogleSignInExceptionCode.canceled => 'Google sign-in was canceled.',
         _ => 'Google sign-in failed. Please try again.',
       };
       throw AuthApiException(message);
     }
+  }
+
+  String _safeDiagnosticMessage(String? message) {
+    if (message == null || message.trim().isEmpty) {
+      return 'not provided';
+    }
+
+    return message
+        .replaceAll(
+          RegExp(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b'),
+          '[redacted email]',
+        )
+        .replaceAll(
+          RegExp(r'\b\d{6,}-[A-Za-z0-9_-]+\.apps\.googleusercontent\.com\b'),
+          '[redacted client ID]',
+        )
+        .replaceAll(
+          RegExp(
+            r'\b[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\b',
+          ),
+          '[redacted token]',
+        )
+        .replaceAll(
+          RegExp(r'\bBearer\s+\S+', caseSensitive: false),
+          'Bearer [redacted]',
+        );
   }
 }
